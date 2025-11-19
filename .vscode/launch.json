@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "calibration capture",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/gits/3sixd/cameraCalibrationCapture.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--path",
+                "~/gits/3sixd/calibration_data"
+            ]
+        },
+        {
+            "name": "simple camera",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/gits/3sixd/simple_camera.py",
+            "console": "integratedTerminal",
+            "args": [
+            ]
+        },
+        {
+            "name": "jetson camera",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/gits/3sixd/JetsonCamera.py",
+            "console": "integratedTerminal",
+            "args": [
+            ]
+        },
+    ]
+}
