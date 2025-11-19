@@ -97,14 +97,14 @@ def show_camera():
     print(f'{camera_id=}')
     print(f'{api_preference=}')
     video_capture = cv2.VideoCapture(camera_id, api_preference)
+    # video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    # video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    # video_capture.set(cv2.CAP_PROP_FPS, 30)
     if video_capture.isOpened():
         try:
-            #window_handle = cv2.namedWindow(window_title, cv2.WINDOW_AUTOSIZE)
+            window_handle = cv2.namedWindow(window_title, cv2.WINDOW_AUTOSIZE)
             frame_counter = -1
             
-            video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-            video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-            video_capture.set(cv2.CAP_PROP_FPS, 30)
             
             while True:
                 frame_counter += 1
@@ -114,20 +114,20 @@ def show_camera():
                 # GTK - Substitute WND_PROP_AUTOSIZE to detect if window has been closed by user
                 
                 print(f'[{frame_counter}]{frame_available=}')
-                # if not frame_available : 
-                #     time.sleep(1)
-                #     continue
+                if not frame_available : 
+                    time.sleep(1)
+                    continue
                 
-                # if cv2.getWindowProperty(window_title, cv2.WND_PROP_AUTOSIZE) >= 0:
-                #     cv2.imshow(window_title, frame)
-                # else:
-                #     break 
-                # keyCode = cv2.waitKey(10) & 0xFF
-                # Stop the program on the ESC key or 'q'
-                # if keyCode == 27 or keyCode == ord('q'):
-                #     break
+                if cv2.getWindowProperty(window_title, cv2.WND_PROP_AUTOSIZE) >= 0:
+                    cv2.imshow(window_title, frame)
+                else:
+                    break 
+                keyCode = cv2.waitKey(10) & 0xFF
+                #Stop the program on the ESC key or 'q'
+                if keyCode == 27 or keyCode == ord('q'):
+                    break
 
-                time.sleep(1)
+                #time.sleep(1)
         except Exception as e :
             print(e)
         finally:
