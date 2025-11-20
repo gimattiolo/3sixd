@@ -425,14 +425,14 @@ def main():
             org=(0,400), 
             fontFace=font, 
             fontScale=fontScale,
-            color=(255,0,0),
+            color=(255,0,0), # blue in BGR
             thickness=thickness,
             lineType=lineType,
             bottomLeftOrigin=False)
 
         cv2.imshow(window_name, windowFrame)
 
-    # When everything done, release the capture
+    # When everything done, release the captures
     for pin_id, cameraDatum in cameraData.items() :
         cameraDatum.release()
 
