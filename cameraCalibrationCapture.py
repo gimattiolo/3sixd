@@ -13,7 +13,7 @@ class CameraDatum :
 
     def reset(self) :
         self.sensor_id = 0
-        self.pin_index = 0
+        self.pin_id = 0
         self.identifier = ''
         self.file = ''
         self.capture = None
@@ -32,7 +32,7 @@ class CameraDatum :
         self.reset()
 
     def __repr__(self) :
-        return f'{self.pin_index}|{self.identifier}||{self.sensor_id}|{self.file}'
+        return f'{self.pin_id}|{self.identifier}||{self.sensor_id}|{self.file}'
 
 def ScanCameras(allowed_pins) :
     subprocess_out = subprocess.check_output(["v4l2-ctl", "--list-devices"]) 
@@ -57,13 +57,13 @@ def ScanCameras(allowed_pins) :
         cameraDatum = CameraDatum()
         match = re.search(pattern='[0-9]+', string=identifiers[i])
         assert match is not None
-        cameraDatum.pin_index = int(match.group())
+        cameraDatum.pin_id = int(match.group())
         cameraDatum.identifier = identifiers[i]
         cameraDatum.file = files[i]
         match = re.search(pattern='[0-9]+', string=files[i])
         assert match is not None
         cameraDatum.sensor_id = int(match.group())        
-        camerData[cameraDatum.pin_index] = cameraDatum
+        camerData[cameraDatum.pin_id] = cameraDatum
 
     # sort the entries by pin
     sorted_items = sorted(camerData.items())
@@ -124,7 +124,7 @@ def main():
 
     num_cameras = len(cameraData)
 
-    pins = list(cameraData.keys())
+    pin_ids = list(cameraData.keys())
 
 
     #file_indices = []
@@ -176,10 +176,10 @@ def main():
     # without this images are upside down
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
-    for pin, cameraDatum in cameraData.items() :
+    for pin_id, cameraDatum in cameraData.items() :
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
-        print(f'sensor:{cameraDatum.sensor_id},pin:{pin},open:{cameraDatum.capture.isOpened()}')
+        print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
         concatFrames.append(np.zeros((size_default[1], size_default[0], 3), np.uint8))
 
     
@@ -197,8 +197,8 @@ def main():
             if len(se) < 2 or se[1] != ext :
                 continue
         
-            thisCameraIndex = CalibrationUtilities.GetCameraIndex(filename)
-            if thisCameraIndex in pins:
+            pin_id = CalibrationUtilities.GetCameraIndex(filename)
+            if pin_id in pin_ids:
                 thisCaptureIndex = CalibrationUtilities.GetCaptureIndex(filename)
                 if thisCaptureIndex > captureIndex :
                     captureIndex = thisCaptureIndex
@@ -211,8 +211,8 @@ def main():
     frameScales = [1.0] * num_cameras
     for i in range(num_cameras) :
         
-        pin = pins[i]
-        cameraDatum = cameraData[pin]
+        pin_id = pin_ids[i]
+        cameraDatum = cameraData[pin_id]
         
         if cameraDatum.capture.isOpened() :
             counter = 0
@@ -232,7 +232,7 @@ def main():
                     frameScales[i] = size_default[1] / frameSizes[i][1]
                 break            
             if counter >= 3 :
-                print(f'{pin} not reading frames')
+                print(f'{pin_id} not reading frames')
                 exit(1)
     print("Running...")
 
@@ -246,14 +246,14 @@ def main():
     while running :
 
         camerasOK = True
-        for pin, cameraDatum in cameraData.items() :
+        for pin_id, cameraDatum in cameraData.items() :
             cameraDatum.foundGrid = False
             if cameraDatum.capture.isOpened() :
                 # Capture frame-by-frame
                 ret, cameraDatum.frame = cameraDatum.capture.read()
 
                 if not ret :
-                    print(f'{pin} not reading frames')
+                    print(f'{pin_id} not reading frames')
                     continue
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
@@ -265,7 +265,7 @@ def main():
                 # if ret :
                     # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
         
-                text = f'ID#{cameraDatum.sensor_id}|PIN#{pin}'
+                text = f'ID#{cameraDatum.sensor_id}|PIN#{pin_id}'
                 cv2.putText(cameraDatum.decoratedFrame, text, 
                     origin, 
                     font, 
@@ -288,16 +288,16 @@ def main():
         if AUTO_SAVE or key == ord('s'):
         
             camerasSeeingGrid = []
-            for pin, cameraDatum in cameraData.items() :
+            for pin_id, cameraDatum in cameraData.items() :
                 if cameraDatum.foundGrid :
-                    camerasSeeingGrid.append(pin)
+                    camerasSeeingGrid.append(pin_id)
 
             if FORCE_SAVE or len(camerasSeeingGrid) > 1 :
-                for pin in camerasSeeingGrid :
-                    cameraDatum = cameraData[pin]
+                for pin_id in camerasSeeingGrid :
+                    cameraDatum = cameraData[pin_id]
                     
                     # the filename is {captureIndex}_{fileCameraIndex}.ext
-                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(captureIndex, pin, ext))
+                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(captureIndex, pin_id, ext))
                     print("Saving image " + filename)
                     cv2.imwrite(filename, cameraDatum.frame)
                 captureIndex += 1
@@ -313,8 +313,8 @@ def main():
         offset = (0, 0)
 
         for i in range(num_cameras) :
-            pin = pins[i]
-            cameraDatum = cameraData[pin]
+            pin_id = pin_ids[i]
+            cameraDatum = cameraData[pin_id]
             scaledSize = ( (int)(frameScales[i] * frameSizes[i][0]), (int)(frameScales[i] * frameSizes[i][1]))
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
             concatFrames[i][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
@@ -324,7 +324,7 @@ def main():
         cv2.imshow('CameraCalibrationCapture', windowFrame)
 
     # When everything done, release the capture
-    for pin, cameraDatum in cameraData.items() :
+    for pin_id, cameraDatum in cameraData.items() :
         cameraDatum.release()
 
     time.sleep(5)
