@@ -293,6 +293,9 @@ def main():
     window_name = 'CameraCalibrationCapture'
 
     print("Running...")
+
+    window_visible = True
+
     while running :
         now = time.time()
         deltaTime = now - lastGridTime
@@ -317,36 +320,35 @@ def main():
 
                 text = f'PIN{pin_id}'
 
-                # pin_in_process = (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple)
-                #pin_in_process = (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple)
+                if not captureCompleted :
+                    pin_in_process = pin_id in captureData[current_capture_id].tuple
+                    if pin_in_process :
+                        text += f'#'
+                    if detectGrid and pin_in_process :
+                    
+                        gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
+                        cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
 
-                # if pin_in_process :
-                #     text += f'#'
+                        cameraDatum.foundGrid = cameraDatum.foundGrid | forceDetection
 
-                if detectGrid and (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple) :
-                    gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
-                    cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
+                        foundGridInAllViews = foundGridInAllViews and cameraDatum.foundGrid
 
-                    cameraDatum.foundGrid = cameraDatum.foundGrid | forceDetection
+                        if cameraDatum.foundGrid :
+                            cameraDatum.decoratedFrame = cv2.drawChessboardCorners(cameraDatum.decoratedFrame, patternSize, corners, ret)                    
 
-                    foundGridInAllViews = foundGridInAllViews and cameraDatum.foundGrid
-
-                    if cameraDatum.foundGrid :
-                        cameraDatum.decoratedFrame = cv2.drawChessboardCorners(cameraDatum.decoratedFrame, patternSize, corners, ret)                    
-
-                    # if ret :
-                        # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
+                        # if ret :
+                            # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
 
 
-                
-                cv2.putText(cameraDatum.decoratedFrame, text, 
-                    origin, 
-                    font, 
-                    fontScale,
-                    fontColor,
-                    thickness,
-                    lineType,
-                    bottomLeftOrigin=False)
+                    
+                    cv2.putText(cameraDatum.decoratedFrame, text, 
+                        origin, 
+                        font, 
+                        fontScale,
+                        fontColor,
+                        thickness,
+                        lineType,
+                        bottomLeftOrigin=False)
 
 
 
@@ -387,10 +389,17 @@ def main():
             else :
                 pass
                 #print("Checkerboard not visible in enough images! Skipping save")
-        
-        if key == ord('q') : #or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+
+        if key == ord('q') :#or not window_visible:
             running = False
             break
+
+        # if cv2.getWindowProperty("foo", cv2.WND_PROP_VISIBLE):
+        #     window_visible = True
+        # else :
+        #     window_visible = False
+
+        # print(window_visible)
 
         # y, x
         offset = (0, 0)
