@@ -275,7 +275,7 @@ def main():
         for j in range(num_simultanous) :
             captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
         captureData.append(captureDatum)
-    num_images_per_capture = 3#float('inf')
+    num_images_per_capture = 10#float('inf')
 
     current_capture_id = 0
 
@@ -286,7 +286,7 @@ def main():
     now = time.time()
     lastGridTime = 0
 
-    forceDetection = True
+    forceDetection = False
 
     startCaptureTime = now
 
