@@ -222,7 +222,7 @@ def main():
         shutil.rmtree(calibrationPath, ignore_errors=False, onerror=None)
         os.mkdir(calibrationPath)
     else :
-        print(f'Unsuppotred save mode:{SaveMode}')
+        print(f'Unsupported save mode:{SaveMode}')
         exit(1)
 
     captureIndex += 1
