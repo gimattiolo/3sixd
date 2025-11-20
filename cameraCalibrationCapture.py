@@ -77,6 +77,15 @@ def ScanCameras(allowed_pins) :
 
     return camerData
 
+class CaptureDatum :
+
+    def reset(self, n) :
+        self.tuple = [None] * n
+        self.counter = 0
+
+    def __init__(self, n) :
+        self.reset(n)
+
 def main():
     parser = argparse.ArgumentParser('Capture calibration images')
     parser.add_argument('--listcameras', dest='list_cameras', action="store_true", help='list available cameras and their indices, and exit')
@@ -118,11 +127,14 @@ def main():
     #         cameras.append(r)
 
     
-    allowed_pins = None#[1,2,4]
+    # allowed_pins = [1,2,3,4,5]
+    allowed_pins = [1,3,5]
 
     cameraData = ScanCameras(allowed_pins)
 
     num_cameras = len(cameraData)
+
+    assert num_cameras >= 0
 
     pin_ids = list(cameraData.keys())
 
@@ -154,7 +166,8 @@ def main():
     ext = '.png'
 
     # width, height
-    size_default = (480, 480)
+    size_default = (1200, 700)
+    #size_default = (400, 400)
 
     if not os.path.exists(calibrationPath) :
         os.mkdir(calibrationPath)
@@ -234,7 +247,6 @@ def main():
             if counter >= 3 :
                 print(f'{pin_id} not reading frames')
                 exit(1)
-    print("Running...")
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -243,9 +255,37 @@ def main():
     thickness              = 10
     lineType               = cv2.LINE_8
 
+    num_simultanous = 2
+
+    captureData = [None] * num_cameras
+
+    for i in range(num_cameras) :
+        captureData[i] = CaptureDatum(num_simultanous)
+        for j in range(num_simultanous) :
+            captureData[i].tuple[j] = pin_ids[(i + j) % num_cameras]
+
+    num_images_per_capture = float('inf')
+
+    current_capture_id = 0
+
+    captureCompleted = False
+
+    threshold_sec = 5
+
+    now = time.time()
+    lastGridTime = 0
+
+    print("Running...")
     while running :
+        now = time.time()
+        deltaTime = now - lastGridTime
+        #print(deltaTime)
+        detectGrid = (deltaTime > threshold_sec)
+        if detectGrid :
+            lastGridTime = now
 
         camerasOK = True
+        foundGridInAllViews = detectGrid
         for pin_id, cameraDatum in cameraData.items() :
             cameraDatum.foundGrid = False
             if cameraDatum.capture.isOpened() :
@@ -257,15 +297,27 @@ def main():
                     continue
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
-                # gray = cv2.cvtColor(decoratedFrames[i], cv2.COLOR_BGR2GRAY)
-                # ret, corners = cv2.findChessboardCorners(gray, patternSize, None)
-                # if ret :
-                #     foundGridPerCamera[i] = True
-                #     decoratedFrames[i] = cv2.drawChessboardCorners(decoratedFrames[i], patternSize, corners, ret)                    
-                # if ret :
-                    # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
-        
-                text = f'ID#{cameraDatum.sensor_id}|PIN#{pin_id}'
+
+                text = f'PIN#{pin_id}'
+
+                if detectGrid and (not captureCompleted) and pin_id in captureData[current_capture_id].tuple :
+                    gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
+                    cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
+
+                    foundGridInAllViews = foundGridInAllViews and cameraDatum.foundGrid
+
+                    if cameraDatum.foundGrid :
+                        cameraDatum.decoratedFrame = cv2.drawChessboardCorners(cameraDatum.decoratedFrame, patternSize, corners, ret)                    
+
+
+                if not captureCompleted :
+                    text += f'|{captureData[current_capture_id].counter}'
+
+                    # if ret :
+                        # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
+
+
+                
                 cv2.putText(cameraDatum.decoratedFrame, text, 
                     origin, 
                     font, 
@@ -274,7 +326,9 @@ def main():
                     thickness,
                     lineType,
                     bottomLeftOrigin=False)
-            
+
+
+
             else :
                 camerasOK = False
         # Display the resulting frame
@@ -282,6 +336,13 @@ def main():
         if not camerasOK :
             print('Unable to open all the required cameras')
             continue
+
+        if foundGridInAllViews :
+            captureData[current_capture_id].counter += 1
+            if captureData[current_capture_id].counter >= num_images_per_capture :
+                current_capture_id += 1
+                if current_capture_id >= num_cameras :
+                    captureCompleted = True
 
         key = cv2.waitKey(waitKeyPeriod)
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
