@@ -349,8 +349,6 @@ def main():
                         # if ret :
                             # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
 
-
-                    
                     cv2.putText(cameraDatum.decoratedFrame, text, 
                         origin, 
                         font, 
@@ -359,8 +357,6 @@ def main():
                         thickness,
                         lineType,
                         bottomLeftOrigin=False)
-
-
 
             else :
                 camerasOK = False
@@ -403,7 +399,6 @@ def main():
             for pin_id, cameraDatum in cameraData.items() :
                 cameraDatum.foundGrid = False
 
-
         if key == ord('q') :#or not window_visible:
             running = False
             break
@@ -424,9 +419,6 @@ def main():
             scaledSize = ( (int)(frameScales[i] * frameSizes[i][0]), (int)(frameScales[i] * frameSizes[i][1]))
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
             concatFrames[i][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
-
-
-
 
         windowFrame = cv2.hconcat(concatFrames)
         
