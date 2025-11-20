@@ -8,6 +8,7 @@ import CalibrationUtilities
 import subprocess
 import re
 import time
+import shutil
 
 class CameraDatum :
 
@@ -92,7 +93,7 @@ def main():
     parser.add_argument('--cameraindices', dest='camera_indices', type=int, nargs='*', help='indices of cameras to capture from')
     #parser.add_argument('--fileindices', dest='file_indices', type=int, nargs='*', help='corresponding indices for each camera when writing file names, must be same size as --cameraindices')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
-    parser.add_argument('--append', type=bool, default=True, help='append images into capture destination folder')
+    parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
     parser.add_argument('--auto', metavar='MS', default=-1, type=int, help='autocapture images, delayed by MS milliseconds')
     parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
     args = parser.parse_args()
@@ -113,9 +114,9 @@ def main():
     waitKeyPeriod = 1
     if args.auto >= 0:
         AUTO_SAVE = True
-        waitKeyPeriod = args.auto
+        #waitKeyPeriod = args.auto
         
-    AppendMode = args.append
+    SaveMode = args.save_mode
 
     # requestedCameras = CalibrationUtilities.GetCameras()
     # if args.camera_indices:
@@ -199,7 +200,8 @@ def main():
     print("Analyzing previous captures...")
     running = True
     captureIndex = -1
-    if AppendMode :
+    if SaveMode == 0 :
+        # append
         fileList = os.listdir(calibrationPath)
         for i in range(0, len(fileList)):
 
@@ -215,6 +217,14 @@ def main():
                 thisCaptureIndex = CalibrationUtilities.GetCaptureIndex(filename)
                 if thisCaptureIndex > captureIndex :
                     captureIndex = thisCaptureIndex
+    elif SaveMode == 1 :
+        # delete
+        shutil.rmtree(calibrationPath, ignore_errors=False, onerror=None)
+        os.mkdir(calibrationPath)
+    else :
+        print(f'Unsuppotred save mode:{SaveMode}')
+        exit(1)
+
     captureIndex += 1
     
     print(f'Appending captures starting with index {captureIndex}')
@@ -377,7 +387,7 @@ def main():
                 if cameraDatum.foundGrid :
                     camerasSeeingGrid.append(pin_id)
 
-            if FORCE_SAVE or len(camerasSeeingGrid) > 1 :
+            if FORCE_SAVE or len(camerasSeeingGrid) > 0 :
                 for pin_id in camerasSeeingGrid :
                     cameraDatum = cameraData[pin_id]
                     
@@ -389,6 +399,10 @@ def main():
             else :
                 pass
                 #print("Checkerboard not visible in enough images! Skipping save")
+
+            for pin_id, cameraDatum in cameraData.items() :
+                cameraDatum.foundGrid = False
+
 
         if key == ord('q') :#or not window_visible:
             running = False
