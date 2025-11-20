@@ -13,8 +13,8 @@ import shutil
 class CameraDatum :
 
     def reset(self) :
-        self.sensor_id = 0
-        self.pin_id = 0
+        self.sensor_id = -1
+        self.pin_id = -1
         self.identifier = ''
         self.file = ''
         self.capture = None
