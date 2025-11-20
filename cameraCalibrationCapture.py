@@ -96,6 +96,8 @@ def main():
     parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
     parser.add_argument('--auto', metavar='MS', default=-1, type=int, help='autocapture images, delayed by MS milliseconds')
     parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
+    parser.add_argument('--num_images_per_capture', type=int, default=10, help='number of images per capture')
+    parser.add_argument('--capture_delta_time_sec', type=int, default=5, help='capture delta time in seconds')
     args = parser.parse_args()
 
     if args.list_cameras:
@@ -285,13 +287,10 @@ def main():
         for j in range(num_simultanous) :
             captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
         captureData.append(captureDatum)
-    num_images_per_capture = 10#float('inf')
 
     current_capture_id = 0
 
     captureCompleted = False
-
-    threshold_sec = 5
 
     now = time.time()
     lastGridTime = 0
@@ -310,7 +309,7 @@ def main():
         now = time.time()
         deltaTime = now - lastGridTime
         #print(deltaTime)
-        detectGrid = (deltaTime > threshold_sec)
+        detectGrid = (deltaTime > args.capture_delta_time_sec)
         if detectGrid :
             lastGridTime = now
 
@@ -328,7 +327,7 @@ def main():
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
 
-                text = f'PIN{pin_id}'
+                text = f'Pin{pin_id}'
 
                 if not captureCompleted :
                     pin_in_process = pin_id in captureData[current_capture_id].tuple
@@ -368,7 +367,7 @@ def main():
 
         if foundGridInAllViews :
             captureData[current_capture_id].counter += 1
-            if captureData[current_capture_id].counter >= num_images_per_capture :
+            if captureData[current_capture_id].counter >= args.num_images_per_capture :
                 current_capture_id += 1
                 if current_capture_id >= len(captureData) :
                     captureCompleted = True
@@ -423,9 +422,9 @@ def main():
         windowFrame = cv2.hconcat(concatFrames)
         
         if not captureCompleted :
-            text = f'{threshold_sec - deltaTime:,.3f}/{threshold_sec}|{captureData[current_capture_id].counter}/{num_images_per_capture}|{current_capture_id}/{len(captureData)}'
+            text = f'{args.capture_delta_time_sec - deltaTime:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_images_per_capture}|{current_capture_id}/{len(captureData)}'
         else :
-            text = f'Capture completed in {endCaptureTime-startCaptureTime:,.3f}sec'
+            text = f'Capture completed in {endCaptureTime - startCaptureTime:,.3f}sec'
         # if not captureCompleted :
         cv2.putText(windowFrame, text, 
             org=(0,400), 

@@ -11,6 +11,8 @@
                 "--path", "~/gits/3sixd/calibration_data",
                 "--auto", "1",
                 "--save_mode", "0",
+                "--num_images_per_capture", "10",
+                "--capture_delta_time_sec", "5",
             ]
         },
         {
