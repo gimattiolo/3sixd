@@ -79,12 +79,12 @@ def ScanCameras(allowed_pins) :
 
 class CaptureDatum :
 
-    def reset(self, n) :
-        self.tuple = [None] * n
+    def reset(self) :
+        self.tuple = []
         self.counter = 0
 
-    def __init__(self, n) :
-        self.reset(n)
+    def __init__(self) :
+        self.reset()
 
 def main():
     parser = argparse.ArgumentParser('Capture calibration images')
@@ -128,7 +128,7 @@ def main():
 
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = [1,3,5]
+    allowed_pins = [1, 3, 5]
 
     cameraData = ScanCameras(allowed_pins)
 
@@ -257,14 +257,25 @@ def main():
 
     num_simultanous = 2
 
-    captureData = [None] * num_cameras
+    captureData = []
+
+    cycle = False
 
     for i in range(num_cameras) :
-        captureData[i] = CaptureDatum(num_simultanous)
-        for j in range(num_simultanous) :
-            captureData[i].tuple[j] = pin_ids[(i + j) % num_cameras]
+        # single camera for intrisics
+        captureDatum = CaptureDatum()
+        captureDatum.tuple.append(pin_ids[i])
+        captureData.append(captureDatum)
 
-    num_images_per_capture = float('inf')
+        # camera pairs for extrisics
+        captureDatum = CaptureDatum()
+
+        if not cycle and i == num_cameras-1 :
+            break 
+        for j in range(num_simultanous) :
+            captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
+        captureData.append(captureDatum)
+    num_images_per_capture = 3#float('inf')
 
     current_capture_id = 0
 
@@ -274,6 +285,12 @@ def main():
 
     now = time.time()
     lastGridTime = 0
+
+    forceDetection = True
+
+    startCaptureTime = now
+
+    window_name = 'CameraCalibrationCapture'
 
     print("Running...")
     while running :
@@ -285,7 +302,7 @@ def main():
             lastGridTime = now
 
         camerasOK = True
-        foundGridInAllViews = detectGrid
+        foundGridInAllViews = detectGrid and not captureCompleted
         for pin_id, cameraDatum in cameraData.items() :
             cameraDatum.foundGrid = False
             if cameraDatum.capture.isOpened() :
@@ -298,20 +315,24 @@ def main():
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
 
-                text = f'PIN#{pin_id}'
+                text = f'PIN{pin_id}'
 
-                if detectGrid and (not captureCompleted) and pin_id in captureData[current_capture_id].tuple :
+                # pin_in_process = (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple)
+                #pin_in_process = (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple)
+
+                # if pin_in_process :
+                #     text += f'#'
+
+                if detectGrid and (not captureCompleted) and (pin_id in captureData[current_capture_id].tuple) :
                     gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
                     cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
+
+                    cameraDatum.foundGrid = cameraDatum.foundGrid | forceDetection
 
                     foundGridInAllViews = foundGridInAllViews and cameraDatum.foundGrid
 
                     if cameraDatum.foundGrid :
                         cameraDatum.decoratedFrame = cv2.drawChessboardCorners(cameraDatum.decoratedFrame, patternSize, corners, ret)                    
-
-
-                if not captureCompleted :
-                    text += f'|{captureData[current_capture_id].counter}'
 
                     # if ret :
                         # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
@@ -341,8 +362,9 @@ def main():
             captureData[current_capture_id].counter += 1
             if captureData[current_capture_id].counter >= num_images_per_capture :
                 current_capture_id += 1
-                if current_capture_id >= num_cameras :
+                if current_capture_id >= len(captureData) :
                     captureCompleted = True
+                    endCaptureTime = now
 
         key = cv2.waitKey(waitKeyPeriod)
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
@@ -366,7 +388,7 @@ def main():
                 pass
                 #print("Checkerboard not visible in enough images! Skipping save")
         
-        if key == ord('q'):
+        if key == ord('q') : #or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             running = False
             break
 
@@ -380,9 +402,26 @@ def main():
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
             concatFrames[i][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
 
+
+
+
         windowFrame = cv2.hconcat(concatFrames)
         
-        cv2.imshow('CameraCalibrationCapture', windowFrame)
+        if not captureCompleted :
+            text = f'{threshold_sec - deltaTime:,.3f}/{threshold_sec}|{captureData[current_capture_id].counter}/{num_images_per_capture}|{current_capture_id}/{len(captureData)}'
+        else :
+            text = f'Capture completed in {endCaptureTime-startCaptureTime:,.3f}sec'
+        # if not captureCompleted :
+        cv2.putText(windowFrame, text, 
+            org=(0,400), 
+            fontFace=font, 
+            fontScale=fontScale,
+            color=(255,0,0),
+            thickness=thickness,
+            lineType=lineType,
+            bottomLeftOrigin=False)
+
+        cv2.imshow(window_name, windowFrame)
 
     # When everything done, release the capture
     for pin_id, cameraDatum in cameraData.items() :
