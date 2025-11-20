@@ -21,7 +21,8 @@ class CameraDatum :
         self.frame = None
         self.decoratedFrames = None
         self.foundGrid = False
-
+        self.size = (0,0)
+        self.scale = 0
 
     def __init__(self) :
         self.reset()
@@ -180,7 +181,10 @@ def main():
         sys.exit(1)
 
     print("Creating capture objects...")
-    concatFrames = []
+
+    NUM_VIEWS = num_cameras
+
+    concatFrames = [None] * NUM_VIEWS
     # (0): none             - Identity (no rotation)
     # (1): counterclockwise - Rotate counter-clockwise 90 degrees
     # (2): rotate-180       - Rotate 180 degrees
@@ -192,11 +196,16 @@ def main():
     # without this images are upside down
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
+
+    black_view = np.zeros((size_default[1], size_default[0], 3), np.uint8)
+
     for pin_id, cameraDatum in cameraData.items() :
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
-        concatFrames.append(np.zeros((size_default[1], size_default[0], 3), np.uint8))
+    # create views in the window
+    for i in range(NUM_VIEWS) :
+        concatFrames[i] = np.copy(black_view)
 
     
     print("Analyzing previous captures...")
@@ -232,13 +241,7 @@ def main():
     print(f'Appending captures starting with index {captureIndex}')
 
     #get size of concat
-    frameSizes = [(0, 0)] * num_cameras
-    frameScales = [1.0] * num_cameras
-    for i in range(num_cameras) :
-        
-        pin_id = pin_ids[i]
-        cameraDatum = cameraData[pin_id]
-        
+    for pin_id, cameraDatum in cameraData.items() :
         if cameraDatum.capture.isOpened() :
             counter = 0
             while counter < 3 :
@@ -250,11 +253,11 @@ def main():
                 # shape returns height, width, channels
                 frameShape = cameraDatum.frame.shape
                 
-                frameSizes[i] = (frameShape[1], frameShape[0])
-                if frameSizes[i][0] > frameSizes[i][1] :
-                    frameScales[i] = size_default[0] / frameSizes[i][0]
+                cameraDatum.size = (frameShape[1], frameShape[0])
+                if cameraDatum.size[0] > cameraDatum.size[1] :
+                    cameraDatum.scale = size_default[0] / cameraDatum.size[0]
                 else :
-                    frameScales[i] = size_default[1] / frameSizes[i][1]
+                    cameraDatum.scale = size_default[1] / cameraDatum.size[1]
                 break            
             if counter >= 3 :
                 print(f'{pin_id} not reading frames')
@@ -348,14 +351,14 @@ def main():
                         # if ret :
                             # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
 
-                    cv2.putText(cameraDatum.decoratedFrame, text, 
-                        origin, 
-                        font, 
-                        fontScale,
-                        fontColor,
-                        thickness,
-                        lineType,
-                        bottomLeftOrigin=False)
+                cv2.putText(cameraDatum.decoratedFrame, text, 
+                    origin, 
+                    font, 
+                    fontScale,
+                    fontColor,
+                    thickness,
+                    lineType,
+                    bottomLeftOrigin=False)
 
             else :
                 camerasOK = False
@@ -410,14 +413,25 @@ def main():
         # print(window_visible)
 
         # y, x
-        offset = (0, 0)
 
-        for i in range(num_cameras) :
-            pin_id = pin_ids[i]
+        if NUM_VIEWS != num_cameras :
+            for i in range(len(concatFrames)) :
+                concatFrames[i] = np.copy(black_view)
+
+        capture_list = pin_ids 
+        if not captureCompleted and NUM_VIEWS != num_cameras :
+            capture_list = captureData[current_capture_id].tuple
+
+        offset = (0, 0)
+        frame_id = 0        
+        for pin_id in capture_list :
             cameraDatum = cameraData[pin_id]
-            scaledSize = ( (int)(frameScales[i] * frameSizes[i][0]), (int)(frameScales[i] * frameSizes[i][1]))
+            scaledSize = ( (int)(cameraDatum.scale * cameraDatum.size[0]), (int)(cameraDatum.scale * cameraDatum.size[1]))
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
-            concatFrames[i][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
+            concatFrames[frame_id][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
+            frame_id += 1
+            if frame_id >= NUM_VIEWS :
+                break
 
         windowFrame = cv2.hconcat(concatFrames)
         
