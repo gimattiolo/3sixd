@@ -97,7 +97,7 @@ def main():
     parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
     parser.add_argument('--auto', metavar='MS', default=-1, type=int, help='autocapture images, delayed by MS milliseconds')
     parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
-    parser.add_argument('--num_images_per_capture', type=int, default=10, help='number of images per capture')
+    parser.add_argument('--num_shots_per_capture', type=int, default=10, help='number of images per capture')
     parser.add_argument('--capture_delta_time_sec', type=int, default=5, help='capture delta time in seconds')
     args = parser.parse_args()
 
@@ -170,7 +170,7 @@ def main():
     ext = '.png'
 
     # width, height
-    size_default = (1200, 700)
+    size_default = (1920, 1080)
     #size_default = (400, 400)
 
     if not os.path.exists(calibrationPath) :
@@ -182,7 +182,7 @@ def main():
 
     print("Creating capture objects...")
 
-    NUM_VIEWS = num_cameras
+    NUM_VIEWS = 2
 
     concatFrames = [None] * NUM_VIEWS
     # (0): none             - Identity (no rotation)
@@ -237,6 +237,7 @@ def main():
         exit(1)
 
     captureIndex += 1
+    firstCaptureIndex = captureIndex
     
     print(f'Appending captures starting with index {captureIndex}')
 
@@ -291,14 +292,16 @@ def main():
             captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
         captureData.append(captureDatum)
 
+    num_captures_expected = args.num_shots_per_capture * len(captureData)
+
     current_capture_id = 0
 
-    captureCompleted = False
+    
 
     now = time.time()
     lastGridTime = 0
 
-    forceDetection = False
+    forceDetection = True
 
     startCaptureTime = now
 
@@ -308,6 +311,8 @@ def main():
 
     window_visible = True
 
+
+    captureCompleted = False
     while running :
         now = time.time()
         deltaTime = now - lastGridTime
@@ -330,12 +335,12 @@ def main():
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
 
-                text = f'Pin{pin_id}'
+                text_pin = f'Pin{pin_id}'
 
                 if not captureCompleted :
                     pin_in_process = pin_id in captureData[current_capture_id].tuple
                     if pin_in_process :
-                        text += f'#'
+                        text_pin += f'#'
                     if detectGrid and pin_in_process :
                     
                         gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
@@ -351,7 +356,8 @@ def main():
                         # if ret :
                             # cornersSubPix = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1), criteria)
 
-                cv2.putText(cameraDatum.decoratedFrame, text, 
+                cv2.putText(cameraDatum.decoratedFrame, 
+                    text_pin, 
                     origin, 
                     font, 
                     fontScale,
@@ -370,11 +376,13 @@ def main():
 
         if foundGridInAllViews :
             captureData[current_capture_id].counter += 1
-            if captureData[current_capture_id].counter >= args.num_images_per_capture :
+            if captureData[current_capture_id].counter >= args.num_shots_per_capture :
                 current_capture_id += 1
-                if current_capture_id >= len(captureData) :
-                    captureCompleted = True
+                captureCompleted = current_capture_id >= len(captureData)
+                if captureCompleted :
                     endCaptureTime = now
+                    assert (captureIndex - firstCaptureIndex + 1) == num_captures_expected, f'Captures|Actual:{num_captures}|Expected:{num_captures_expected}'
+                    text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
 
         key = cv2.waitKey(waitKeyPeriod)
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
@@ -416,7 +424,7 @@ def main():
 
         if NUM_VIEWS != num_cameras :
             for i in range(len(concatFrames)) :
-                concatFrames[i] = np.copy(black_view)
+                concatFrames[i][:] = black_view[:]
 
         capture_list = pin_ids 
         if not captureCompleted and NUM_VIEWS != num_cameras :
@@ -436,11 +444,11 @@ def main():
         windowFrame = cv2.hconcat(concatFrames)
         
         if not captureCompleted :
-            text = f'{args.capture_delta_time_sec - deltaTime:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_images_per_capture}|{current_capture_id}/{len(captureData)}'
-        else :
-            text = f'Capture completed in {endCaptureTime - startCaptureTime:,.3f}sec'
+            text_info = f'{args.capture_delta_time_sec - deltaTime:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_shots_per_capture}|{current_capture_id}/{len(captureData)}'
+
         # if not captureCompleted :
-        cv2.putText(windowFrame, text, 
+        cv2.putText(windowFrame, 
+            text_info, 
             org=(0,400), 
             fontFace=font, 
             fontScale=fontScale,
