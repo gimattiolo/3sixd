@@ -214,9 +214,7 @@ def main():
 
         # print(window_visible)
 
-        windowFrame = cv2.hconcat(panorama)
-        
-        cv2.imshow(window_name, windowFrame)
+        cv2.imshow(window_name, panorama)
 
     # When everything done, release the captures
     for pin_id, cameraDatum in cameraData.items() :
