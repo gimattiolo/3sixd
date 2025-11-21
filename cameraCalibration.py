@@ -119,12 +119,16 @@ def LoadJsonContent(filename) :
 
 def PrepareImages(calibrationPath, fileIndices, debugMaxNumCameraImage):
     numCameras = len(fileIndices)
-    imagesPerCamera = []
-    sizesPerCamera = []
+    imagesPerCamera = {}
+    sizesPerCamera = {}
 
     for i in range(0, numCameras) :
-        imagesPerCamera.append([])
-        sizesPerCamera.append([])
+        imagesPerCamera[ fileIndices[i] ] = []
+        sizesPerCamera[ fileIndices[i] ] = []
+
+    # sort the entries by pin
+    imagesPerCamera = dict(sorted(imagesPerCamera.items()))
+    sizesPerCamera = dict(sorted(sizesPerCamera.items()))
 
     fileList = os.listdir(calibrationPath)
     for i in range(0, len(fileList)):
@@ -135,18 +139,16 @@ def PrepareImages(calibrationPath, fileIndices, debugMaxNumCameraImage):
         if file_extension.lower() == '.json' :
             continue
 
-        camIndex = CalibrationUtilities.GetCameraIndex(filename)
+        pin_id = CalibrationUtilities.GetCameraIndex(filename)
 
-        if camIndex == -1 :
+        if pin_id == -1 :
             print(f'Unable to extract camera index from string {filename}')
             continue
 
-        if not (camIndex in fileIndices):
+        if not (pin_id in fileIndices):
             continue
 
-        c = fileIndices.index(camIndex)
-
-        if len(imagesPerCamera[c]) >= debugMaxNumCameraImage :
+        if len(imagesPerCamera[pin_id]) >= debugMaxNumCameraImage :
             continue
         
         fullFilename = os.path.join(calibrationPath, filename)
@@ -158,20 +160,20 @@ def PrepareImages(calibrationPath, fileIndices, debugMaxNumCameraImage):
             
         # we store channels, width and height
         size = image.shape[::-1]
-        sizesPerCamera[c].append(size)
+        sizesPerCamera[pin_id].append(size)
 
-        print (f'Loading image #{i} {fullFilename} {size} for camera {c}')
-        imagesPerCamera[c].append((image, fullFilename))
+        print (f'Loading image #{i} {fullFilename} {size} for camera {pin_id}')
+        imagesPerCamera[pin_id].append((image, fullFilename))
 
-    for c in range(0, numCameras) :
-        for i in range(1, len(sizesPerCamera[c])) :
-            if sizesPerCamera[c][i] != sizesPerCamera[c][i - 1] :
-                print(f'Camera {c} : image {i} size {sizesPerCamera[c][i]} is different from image {i - 1} size {sizesPerCamera[c][i - 1]}')
+    for pin_id in sizesPerCamera.keys() :
+        for i in range(1, len(sizesPerCamera[pin_id])) :
+            if sizesPerCamera[pin_id][i] != sizesPerCamera[pin_id][i - 1] :
+                print(f'Camera {pin_id} : image {i} size {sizesPerCamera[pin_id][i]} is different from image {i - 1} size {sizesPerCamera[pin_id][i - 1]}')
                 return
 
-    for c in range(0, numCameras) :
-        if len(imagesPerCamera[c]) == 0 :
-            print(f'No image found in {calibrationPath} for camera {c}')
+    for pin_id in sizesPerCamera.keys() :
+        if len(imagesPerCamera[pin_id]) == 0 :
+            print(f'No image found in {calibrationPath} for camera {pin_id}')
 
     return imagesPerCamera, sizesPerCamera
 
@@ -198,11 +200,11 @@ def main():
         sys.exit(1)
 
     if args.intrinsic and not args.intrinsic_path:
-        print ('You must set the --intrinsicpath to run in --intrinsic mode')
+        print ('You must set the --intrinsic_path to run in --intrinsic mode')
         sys.exit(1)
 
     if args.extrinsic and not (args.intrinsic_path and args.extrinsic_path):
-        print ('You must set the --intrinsicpath and --extrinsicpath to run in --extrinsic mode')
+        print ('You must set the --intrinsic_path and --extrinsic_path to run in --extrinsic mode')
         sys.exit(1)
 
     if args.world_space and not (args.intrinsic_path and args.world_space_path):
@@ -271,26 +273,26 @@ def main():
         startTime = time.time()
     
         imagesPerCamera, sizesPerCamera = PrepareImages(intrinsicPath, fileIndices, debugMaxNumCameraImage)
-        intrinsicMatrices = []
-        distortions = []
-        mean_errors = []
+        intrinsicMatrices = {}
+        distortions = {}
+        mean_errors = {}
 
-        imagePoints = []
-        for c in range(0, len(imagesPerCamera)) :
-            intrinsicMatrices.append([])
-            distortions.append([])
-            mean_errors.append([])
-            imagePoints.append([])
-            print(f'Calibrating camera {c}')
+        imagePoints = {}
+        for pin_id in imagesPerCamera.keys() :
+            intrinsicMatrices[pin_id] = []
+            distortions[pin_id] = []
+            mean_errors[pin_id] = []
+            imagePoints[pin_id] = []
+            print(f'Calibrating camera {pin_id}')
             
-            cameraFilename = os.path.join(intrinsicPath, 'calibration' + str(c) + '.json')
+            cameraFilename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')
 
-            camaraCalibrationLoaded, intrinsicMatrices[c], distortions[c], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
+            camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
 
-            error, intrinsicMatrices[c], distortions[c], mean_errors[c], imagePoints[c] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[c], sizesPerCamera[c][0], camaraCalibrationLoaded, intrinsicMatrices[c], distortions[c])
-            jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[c], distortions[c], mean_errors[c], sizesPerCamera[c][0]) 
+            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id])
+            jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], sizesPerCamera[pin_id][0]) 
 
-            filename = os.path.join(intrinsicPath, 'calibration' + str(fileIndices[c]) + '.json')
+            filename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')
             SaveJsonContent(jsonContent, filename)
 
         print(f'Completed in {(time.time() - startTime) / 60.0} minutes')
