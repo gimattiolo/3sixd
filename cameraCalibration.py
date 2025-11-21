@@ -1,11 +1,9 @@
 import numpy as np
 import cv2
-import glob
 import argparse
 import os
 import sys
 import time
-import pymongo
 
 import CalibrationUtilities
 import WaveUtilities
@@ -191,6 +189,7 @@ def main():
     parser.add_argument('--searchsize', dest='search_size', type=int, nargs=2, help='search window half-size for finding the checkerboard')
     parser.add_argument('--zerozonesize', dest='zero_zone_size', type=int, nargs=2, help='search zone dead region half-size that is ignored when looking for checkerboard gradients')
     parser.add_argument('--maximages', dest='max_images', type=int, default=-1, help='maximum number of images to load')
+
     args = parser.parse_args()
 
     modeTotals = (1 if args.intrinsic else 0) + (1 if args.extrinsic else 0) + (1 if args.world_space else 0)
