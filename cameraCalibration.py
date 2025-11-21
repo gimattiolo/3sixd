@@ -309,33 +309,8 @@ def main():
             print(f'Incorrect pairs')
             exit(1) 
 
+        pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)
 
-        pairs = []
-
-        for i in range(0, len(args.pairs), 2) :
-            pairs.append((args.pairs[i], args.pairs[i+1]))
-
-        # check pairs
-        for c0, c1 in pairs :
-            if not(c0 in pin_ids and c1 in pin_ids) :
-                print(f'Incorrect pair {c0},{c1}')
-                exit(1) 
-
-        if True :
-            pair_dict = {}
-            # check pairs
-            for pair in pairs :
-                if pair in pair_dict :
-                    print(f'Incorrect pair {pair}')
-                    exit(1)
-
-                # this catches also the case when the pair has the same ids
-                pair_inv = (pair[1], pair[0])
-                if pair_inv in pair_dict :
-                    print(f'Repeated pair {pair}')
-                    exit(1)
-
-                pair_dict[pair] = None
 
         # load intrinsic data from disk for each camera
         intrinsicMatrices = {}

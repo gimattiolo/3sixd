@@ -57,6 +57,9 @@
             "console": "integratedTerminal",
             "args": [
                 "--path", "~/gits/3sixd/calibration_data_test",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data",
+                "--pairs", "1", "3", "3", "5",
             ]
         },
     ]

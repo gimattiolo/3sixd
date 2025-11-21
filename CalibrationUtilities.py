@@ -281,3 +281,33 @@ def make_gstreamer_pipeline(
             display_height,
         )
     )
+
+def MakePairs(input_pairs, pin_ids) :
+    pairs = []
+
+    for i in range(0, len(input_pairs), 2) :
+        pairs.append((input_pairs[i], input_pairs[i+1]))
+
+    # check pairs
+    for c0, c1 in pairs :
+        if not(c0 in pin_ids and c1 in pin_ids) :
+            print(f'Incorrect pair {c0},{c1}')
+            return None
+
+    if True :
+        pair_dict = {}
+        # check pairs
+        for pair in pairs :
+            if pair in pair_dict :
+                print(f'Incorrect pair {pair}')
+                return None
+
+            # this catches also the case when the pair has the same ids
+            pair_inv = (pair[1], pair[0])
+            if pair_inv in pair_dict :
+                print(f'Repeated pair {pair}')
+                return None
+
+            pair_dict[pair] = None
+
+    return pairs
