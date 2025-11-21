@@ -8,10 +8,10 @@
             "program": "~/gits/3sixd/cameraCalibrationCapture.py",
             "console": "integratedTerminal",
             "args": [
-                "--path", "~/gits/3sixd/calibration_data",
+                "--path", "~/gits/3sixd/calibration_data_test",
                 "--auto", "1",
                 "--save_mode", "0",
-                "--num_images_per_capture", "10",
+                "--num_shots_per_capture", "10",
                 "--capture_delta_time_sec", "5",
             ]
         },
