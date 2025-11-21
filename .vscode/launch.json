@@ -41,10 +41,12 @@
             "console": "integratedTerminal",
             "args": [
                 "--file_indices", "1", "3", "5",
-                "--intrinsic",
+                "--pairs", "1", "3", "3", "5",
                 "--intrinsic_path", "~/gits/3sixd/calibration_data",
-                //"--extrinsic",
-                //"--extrinsic_path", "~/gits/3sixd/calibration_data",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data",
+                //"--intrinsic",
+                "--extrinsic",
+                
             ]
         },
     ]

@@ -191,6 +191,7 @@ def main():
     parser.add_argument('--search_size', type=int, nargs=2, help='search window half-size for finding the checkerboard')
     parser.add_argument('--zero_zone_size', type=int, nargs=2, help='search zone dead region half-size that is ignored when looking for checkerboard gradients')
     parser.add_argument('--max_images', type=int, default=-1, help='maximum number of images to load')
+    parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
 
     args = parser.parse_args()
 
@@ -302,23 +303,62 @@ def main():
     
         imagesPerCamera, sizesPerCamera = PrepareImages(extrinsicPath, fileIndices, debugMaxNumCameraImage)
 
+        pin_ids = list(imagesPerCamera.keys())
+
+        if len(args.pairs) % 2 != 0 :
+            print(f'Incorrect pairs')
+            exit(1) 
+
+
+        pairs = []
+
+        for i in range(0, len(args.pairs), 2) :
+            pairs.append((args.pairs[i], args.pairs[i+1]))
+
+        # check pairs
+        for c0, c1 in pairs :
+            if not(c0 in pin_ids and c1 in pin_ids) :
+                print(f'Incorrect pair {c0},{c1}')
+                exit(1) 
+
+            if c0 == c1 :
+                print(f'Incorrect pair {c0},{c1}')
+                exit(1) 
+
+        if True :
+            pair_dict = {}
+            # check pairs
+            for pair in pairs :
+                if pair in pair_dict :
+                    print(f'Incorrect pair {pair}')
+                    exit(1)
+
+                pair_inv = (pair[1], pair[0])
+                if pair_inv in pair_dict :
+                    print(f'Repeated pair {pair}')
+                    exit(1)
+
+                pair_dict[pair] = None
+
         # load intrinsic data from disk for each camera
-        intrinsicMatrices = []
-        distortions = []
-        for c in range(0, numCameras) :
-            filename = os.path.join(intrinsicPath, 'calibration' + str(fileIndices[c]) + '.json')
+        intrinsicMatrices = {}
+        distortions = {}
+        for k0 in range(numCameras) :
+            c = pin_ids[k0]
+            filename = os.path.join(intrinsicPath, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
             intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
-            intrinsicMatrices.append(intrinsicMatrix)
-            distortions.append(distortion)
+            intrinsicMatrices[c] = intrinsicMatrix
+            distortions[c] = distortion
 
-        imagePoints = []
+        imagePoints = {}
 
         validImagesPerPair = {}
         validPointsPerPair = {}
- 
-        for c in range(0, numCameras) :
-            imagePoints.append([])
+
+        for k0 in range(numCameras) :
+            c = pin_ids[k0]
+            imagePoints[c] = []
             # compute image points
             images = imagesPerCamera[c]
             
@@ -327,87 +367,88 @@ def main():
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
-                    print('No image points found on image {os.path.basename(image images[i][1])}')
+                    print(f'No image points found on image {os.path.basename(images[i][1])}')
                     sys.exit(1)
 
-        for c0 in range(0, numCameras) :
-            for c1 in range(c0 + 1, numCameras) :
-                validImagesPerPair[(c0, c1)] = ([], [])
-                validPointsPerPair[(c0, c1)] = ([], [])
+        for c0, c1 in pairs :
+            validImagesPerPair[(c0, c1)] = ([], [])
+            validPointsPerPair[(c0, c1)] = ([], [])
 
         # filter out images without matching point pairs
-        for c0 in range(0, numCameras) :
-            for c1 in range(c0 + 1, numCameras) :
-                print(f'Collecting necessary images for pair {c0} {c1}')
-                for i0 in range(0, len(imagesPerCamera[c0])) :
-                    image0 = imagesPerCamera[c0][i0][0]
-                    name0 = os.path.basename(imagesPerCamera[c0][i0][1])
-                    points0 = imagePoints[c0][i0]
+        for c0, c1 in pairs :
 
-                    captureIndex0 = CalibrationUtilities.GetCaptureIndex(name0)
+            print(f'Collecting necessary images for pair {c0} {c1}')
+            for i0 in range(0, len(imagesPerCamera[c0])) :
+                image0 = imagesPerCamera[c0][i0][0]
+                name0 = os.path.basename(imagesPerCamera[c0][i0][1])
+                points0 = imagePoints[c0][i0]
+
+                captureIndex0 = CalibrationUtilities.GetCaptureIndex(name0)
+                
+                for i1 in range(0, len(imagesPerCamera[c1])) :
+                    image1 = imagesPerCamera[c1][i1][0]
+                    name1 = os.path.basename(imagesPerCamera[c1][i1][1])
+                    points1 = imagePoints[c1][i1]
+
+                    captureIndex1 = CalibrationUtilities.GetCaptureIndex(name1)
                     
-                    for i1 in range(0, len(imagesPerCamera[c1])) :
-                        image1 = imagesPerCamera[c1][i1][0]
-                        name1 = os.path.basename(imagesPerCamera[c1][i1][1])
-                        points1 = imagePoints[c1][i1]
+                    if captureIndex0 == captureIndex1 :
 
-                        captureIndex1 = CalibrationUtilities.GetCaptureIndex(name1)
-                        
-                        if captureIndex0 == captureIndex1 :
-
-                            i = len(validImagesPerPair[(c0, c1)][0]) 
-                                
-                            validImagesPerPair[(c0, c1)][0].append(imagesPerCamera[c0][i0])
-                            validPointsPerPair[(c0, c1)][0].append(points0)
-
-                            validImagesPerPair[(c0, c1)][1].append(imagesPerCamera[c1][i1])
-                            validPointsPerPair[(c0, c1)][1].append(points1)
-
-                            n0 = len(validPointsPerPair[(c0, c1)][0])
-                            n1 = len(validPointsPerPair[(c0, c1)][1])
+                        i = len(validImagesPerPair[(c0, c1)][0]) 
                             
-                            m0 = len(validImagesPerPair[(c0, c1)][0])
-                            m1 = len(validImagesPerPair[(c0, c1)][1])
+                        validImagesPerPair[(c0, c1)][0].append(imagesPerCamera[c0][i0])
+                        validPointsPerPair[(c0, c1)][0].append(points0)
 
-                            if n0 != n1 or n0 != m0 or m0 != m1 :
-                                print(f'Different data for {c0} and {c1} : {n0} {n1} {m0} {m1}')
-                                sys.exit(1)
+                        validImagesPerPair[(c0, c1)][1].append(imagesPerCamera[c1][i1])
+                        validPointsPerPair[(c0, c1)][1].append(points1)
 
-                            print(f'Will use image pair {i} {name0} {name1}')
+                        n0 = len(validPointsPerPair[(c0, c1)][0])
+                        n1 = len(validPointsPerPair[(c0, c1)][1])
+                        
+                        m0 = len(validImagesPerPair[(c0, c1)][0])
+                        m1 = len(validImagesPerPair[(c0, c1)][1])
+
+                        if n0 != n1 or n0 != m0 or m0 != m1 :
+                            print(f'Different data for {c0} and {c1} : {n0} {n1} {m0} {m1}')
+                            sys.exit(1)
+
+                        print(f'Will use image pair {i} {name0} {name1}')
 
         # Generate extrinsic data between cameras
-        for c0 in range(0, numCameras) :
-            for c1 in range(c0 + 1, numCameras) :
+        for c0, c1 in pairs :
 
-                # Array to store object points from all the images.
-                imageObjectPoints = [] # 3d points in real world space
-                # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-                objp = np.zeros((patternSize[0] * patternSize[1], 3), np.float32)
-                objp[:,:2] = np.mgrid[ 0 : patternSize[0], 0 : patternSize[1] ].T.reshape(-1, 2)
-                for i in range(0, len(validPointsPerPair[(c0, c1)][0])) :
-                    imageObjectPoints.append(objp)
+            # Array to store object points from all the images.
+            imageObjectPoints = [] # 3d points in real world space
+            # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+            objp = np.zeros((patternSize[0] * patternSize[1], 3), np.float32)
+            objp[:,:2] = np.mgrid[ 0 : patternSize[0], 0 : patternSize[1] ].T.reshape(-1, 2)
+            for i in range(0, len(validPointsPerPair[(c0, c1)][0])) :
+                imageObjectPoints.append(objp)
 
-                objectPointsArray = np.array(imageObjectPoints)
-                
-                objectPointsArray *= S
-                
-                print(f'Calibrating stereo pair {fileIndices[c0]} {fileIndices[c1]}')
-                
-                error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], sizesPerCamera[c0][0]) 
-                
-                jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, S)
-                filename = os.path.join(extrinsicPath, 'stereoCalibration' + str(fileIndices[c0]) + '_' + str(fileIndices[c1]) + '.json')
-                SaveJsonContent(jsonContent, filename)
+            objectPointsArray = np.array(imageObjectPoints)
+            
+            objectPointsArray *= S
+            
+            print(f'Calibrating stereo pair {c0} {c1}')
+            
+            error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], sizesPerCamera[c0][0]) 
+            
+            jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, S)
+            filename = os.path.join(extrinsicPath, f'stereoCalibration{c0}_{c1}.json')
+            SaveJsonContent(jsonContent, filename)
     elif args.world_space:
         startTime = time.time()
         # take a single checkerboard laid out on the ground, and compute its origin as the world space origin.
         imagesPerCamera, sizesPerCamera = PrepareImages(worldSpacePath, fileIndices, debugMaxNumCameraImage)
 
+        pin_ids = list(imagesPerCamera.keys())
+
         # load intrinsic data from disk for each camera
-        intrinsicMatrices = []
-        distortions = []
-        for c in range(0, numCameras) :
-            filename = os.path.join(intrinsicPath, 'calibration' + str(fileIndices[c]) + '.json')
+        intrinsicMatrices = {}
+        distortions = {}
+        for k0 in range(0, numCameras) :
+            c = pin_ids[k0]
+            filename = os.path.join(intrinsicPath, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
             intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             intrinsicMatrices.append(intrinsicMatrix)
@@ -418,8 +459,9 @@ def main():
         validImagesPerPair = {}
         validPointsPerPair = {}
          
-        for c in range(0, numCameras) :
-            imagePoints.append([])
+        for k0 in range(0, numCameras) :
+            c = pin_ids[k0]
+            imagePoints[c] = []
             # compute image points
             images = imagesPerCamera[c]
             for i in range(0, len(images)):
@@ -431,7 +473,8 @@ def main():
                     sys.exit(1)
 
         # Generate worldspace transform for each camera
-        for c0 in range(0, numCameras) :
+        for k0 in range(0, numCameras) :
+            c0 = pin_ids[k0]
             # Array to store object points from all the images.
             imageObjectPoints = [] # 3d points in real world space
             # prepare object points, like (0,0,0), (1,0,0) ... (m-2, 0, -(n-1)) ... (m-1, 0, -(n-1))
