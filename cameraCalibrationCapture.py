@@ -301,7 +301,7 @@ def main():
     now = time.time()
     lastGridTime = 0
 
-    forceDetection = True
+    forceDetection = False
 
     startCaptureTime = now
 
