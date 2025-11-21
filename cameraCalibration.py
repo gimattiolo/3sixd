@@ -321,10 +321,6 @@ def main():
                 print(f'Incorrect pair {c0},{c1}')
                 exit(1) 
 
-            if c0 == c1 :
-                print(f'Incorrect pair {c0},{c1}')
-                exit(1) 
-
         if True :
             pair_dict = {}
             # check pairs
@@ -333,6 +329,7 @@ def main():
                     print(f'Incorrect pair {pair}')
                     exit(1)
 
+                # this catches also the case when the pair has the same ids
                 pair_inv = (pair[1], pair[0])
                 if pair_inv in pair_dict :
                     print(f'Repeated pair {pair}')
