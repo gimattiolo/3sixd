@@ -169,6 +169,19 @@ def Dir2Angle(dir) :
 
     return gammaTheta
 
+def MakeUV(shape) :
+    H,W = shape
+    def create_array_element_u(i, j):
+        return i / W 
+
+    def create_array_element_v(i, j):
+        return j / H 
+
+    i_u = np.fromfunction(create_array_element_u, shape, dtype=np.float32)
+    i_v = np.fromfunction(create_array_element_v, shape, dtype=np.float32)
+
+    return np.stack((i_u, i_v), axis=2)
+
 def main():
     parser = argparse.ArgumentParser('Panorama')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
@@ -429,24 +442,8 @@ def main():
 
     window_visible = True
 
-    def create_array_element_u(i, j):
-        return i / W 
-
-    def create_array_element_v(i, j):
-        return j / H 
-
-
-    i_u = np.fromfunction(create_array_element_u, size_default, dtype=float)
-    i_v = np.fromfunction(create_array_element_v, size_default, dtype=float)
-
-    i_uv = np.stack((i_u, i_v), axis=2)
-
-    # xv, yv = np.meshgrid(x, y, indexing='ij')
-
+    i_uv = MakeUV(size_default)
     gammaTheta = UV2Angle_vectorized(i_uv)
-
-
-
     ray_inW = Angle2Dir_vectorized(gammaTheta)
     ray_inW = Normalize_vectorized(ray_inW)
 
