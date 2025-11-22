@@ -95,11 +95,12 @@ class CaptureDatum :
 def Angle2Dir(gammaTheta) :
     return np.array([math.sin(gammaTheta.y) * math.cos(gammaTheta.x), math.cos(gammaTheta.y), math.sin(gammaTheta.y) * math.sin(gammaTheta.x)])
 
+# returns 3, H, W
 def Angle2Dir_vectorized(gammaTheta) :
     X = np.sin(gammaTheta[:,:,1]) * np.cos(gammaTheta[:,:,0])
     Y = np.cos(gammaTheta[:,:,1])
     Z = np.sin(gammaTheta[:,:,1]) * np.sin(gammaTheta[:,:,0])
-    return np.stack((X,Y,Z), axis=2)
+    return np.stack((X,Y,Z), axis=0)
 
 def UV2Angle(uv) :
     gammaTheta = np.zeros((2,1))
@@ -119,11 +120,12 @@ def Lerp(a, b, x) :
 def Normalize(x) :
     return x / np.linalg.norm(x)
 
+# x is assumed to be 3, H, W
 def Normalize_vectorized(x) :
-    norm = np.linalg.norm(x, axis=2)
-    x[:,:,0] /= norm
-    x[:,:,1] /= norm
-    x[:,:,2] /= norm
+    norm = np.linalg.norm(x, axis=0)
+    x[0,:,:] /= norm
+    x[1,:,:] /= norm
+    x[2,:,:] /= norm
     return x 
 
 def Angle2UV(gammaTheta, offset_rad) :
@@ -217,8 +219,8 @@ def main():
     ext = '.png'
 
     # width, height
-    W, H = (1920, 1080)
-    #W, H = (400, 400)
+    H, W = (1080, 1920)
+    #H, W = (400, 400)
 
     size_default = (W,H) 
 
@@ -446,6 +448,36 @@ def main():
     gammaTheta = UV2Angle_vectorized(i_uv)
     ray_inW = Angle2Dir_vectorized(gammaTheta)
     ray_inW = Normalize_vectorized(ray_inW)
+    ray_inW = ray_inW.reshape((3,-1))    
+
+    uvs= {}
+
+    for pin_id, cameraDatum in cameraData.items() :
+
+        # in the following we assume the focal quad has size 1 x 1
+        # and is at distance f along z relative to the camera
+        # hfovAngle = 0.5 * _FoV_rad
+        # hh = 0.5
+        # hw = hh * _AspectRatio
+        # half_size = np.array([hw, hh])
+        # f = hh / math.tan(hfovAngle)
+        f = 1.0
+        half_size = 1.0
+
+        # for each pixel fo the 360m texture gets the ray in world space
+
+        _M_W2V = np.ones((3,3))
+
+        ray_inV = np.matmul(_M_W2V, ray_inW)
+        ray_inV = np.reshape(ray_inV, (H, W, 3))
+
+        factor = f / np.maximum(ray_inV[:, :, 2], 0.001)
+
+        ray_inV[:, :,0] *= factor
+        ray_inV[:, :,1] *= factor
+        ray_inV[:, :,2] *= factor
+
+        uvs[pin_id] = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
 
     while running :
         now = time.time()
@@ -485,51 +517,37 @@ def main():
 
         # make panorama
 
-        '''   
-        # in the following we assume the focal quad has size 1 x 1
-        # and is at distance f along z relative to the camera
-        hfovAngle = 0.5 * _FoV_rad
-
-        hh = 0.5
-        hw = hh * _AspectRatio
-        half_size = np.array([hw, hh])
-        f = hh / math.tan(hfovAngle)
 
 
 
         panorama[:] = black_view[:]
 
         shape = panorama.shape
-
-
-        ray_inV = np.zeros(3,1)
-        uv = np.zeros(3,1)
-
-        panorama_uv = np.zeros(panorama)
-
-
  
-        num_acculations = 0.0
+        panorama = panorama.astype(np.float32) / 255.0
+
+        num_acculations = np.zeros((H,W), dtype=np.float32)
         for pin_id, cameraDatum in cameraData.items() :
-            # for each pixel fo the 360m texture gets the ray in world space
 
-            ray_inV = mul((float3x3)_M_W2V[k], ray_inW)
-            ray_inV *= f / max(ray_inV.z, 0.001)
-        
-            uv.xy = 0.5 * (1.0 + ray_inV.xy / half_size)
-            # uv.xy = i.uv
-            uv.z = k
+            uv = uvs[pin_id]
 
+            _CameraTex = cameraDatum.frame
+
+            '''
             #color = tex2D(_CameraTex[k], uv)
             const fixed4 color = UNITY_SAMPLE_TEX2DARRAY(_CameraTex, uv)
             const float condition = 0.0 <= uv.x && uv.x <= 1.0 && 0.0 <= uv.y && uv.y <= 1.0
             #const float condition = 1.0
             panorama += lerp(zeroSample, color, condition)
             num_acculations += condition
+            '''
+        den = np.maximum(1.0, num_acculations)
+        panorama[:,:,0] /= den
+        panorama[:,:,1] /= den
+        panorama[:,:,2] /= den
 
-        panorama /= max(1.0, num_acculations);
+        panorama = (255.0 * panorama).astype(np.uint8)
 
-        '''
         cv2.imshow(window_name, panorama)
 
     # When everything done, release the captures
