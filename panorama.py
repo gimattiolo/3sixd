@@ -114,13 +114,15 @@ def UV2Angle_vectorized(uv) :
     gammaTheta[:, :, 1] = (1.0 - uv[:, :, 1]) * math.pi
     return gammaTheta
 
-def Lerp(a, b, x) :
-    return a + (b - a) * x
+def Lerp(a0, a1, x) :
+    return a0 + (a1 - a0) * x
 
-# a,b as H,W,3, x as H,W
-def Lerp_vectorized(default_color, b, x, out) :
+# a0 is a scalar
+# a1 is H,W,3, 
+# x is H,W
+def Lerp_vectorized(a0, a1, x, out) :
     for i in range(3) :
-        out[:,:,i] += default_color + (b[:,:,i] - default_color) * x
+        out[:,:,i] += a0 + (a1[:,:,i] - a0) * x
     
 def Normalize(x) :
     return x / np.linalg.norm(x)
