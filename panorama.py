@@ -337,8 +337,8 @@ def main():
 
     first_pin_id = pin_ids[0]
 
-    ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4)
-    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[c0].IntrinsicMatrix, np.block([ [ np.identity(3), np.zeros((3, 1)) ] ]))
+    ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
+    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[c0].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
 
     # store extrinsic
     for c0, c1 in pairs :
@@ -462,22 +462,27 @@ def main():
 
     for pin_id, cameraDatum in cameraData.items() :
 
+        c0 = pin_ids[0]
         # in the following we assume the focal quad has size 1 x 1
         # and is at distance f along z relative to the camera
-        # hfovAngle = 0.5 * _FoV_rad
-        # hh = 0.5
-        # hw = hh * _AspectRatio
-        # half_size = np.array([hw, hh])
-        # f = hh / math.tan(hfovAngle)
-        f = 1.0
-        half_size = 1.0
+        hfovAngle_rad = math.atan(0.5 * cameraDatum.h / cameraDatum.f)
+        hfovAngle_deg = math.degrees(hfovAngle_rad)
+        
+        hh = 0.5
+        hw = hh * cameraDatum.ar
+        half_size = np.array([hw, hh])
+        f = hh / math.tan(hfovAngle_rad)
 
         # for each pixel fo the 360m texture gets the ray in world space
 
         _M_W2V = np.ones((3,3))
 
+        print(_M_W2V)
+
         ray_inV = np.matmul(_M_W2V, ray_inW)
-        ray_inV = np.reshape(ray_inV, (H, W, 3))
+        ray_inV = np.reshape(ray_inV, (3, H, W))
+        #3,H,W -> H,W,3
+        ray_inV = np.transpose(ray_inV, (1, 2, 0))
 
         factor = f / np.maximum(ray_inV[:, :, 2], 0.001)
 
@@ -486,10 +491,19 @@ def main():
         ray_inV[:, :,2] *= factor
 
         uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
+        
+
+        ps = np.dot(ProjectionMatrices[(c0, pin_id)][:, 0:3], ray_inW)
+        ps = np.reshape(ps[0:2, :], (2, H, W))
+        #2,H,W -> H,W,2
+        ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
 
         # Convert u to x (column) and v to y (row)
-        pixel_x = (uvs[:, :, 0] * W).astype(np.int32)
-        pixel_y = ((1 - uvs[:, :, 1]) * H).astype(np.int32) # Invert v for image coordinates
+        # pixel_x = (uvs[:, :, 0] * W).astype(np.int32)
+        # pixel_y = ((1 - uvs[:, :, 1]) * H).astype(np.int32) # Invert v for image coordinates
+
+        pixel_x = ps[:, :, 0]
+        pixel_y = ps[:, :, 1]
 
         mask_x = (0 <= pixel_x) & (pixel_x < W)
         mask_y = (0 <= pixel_y) & (pixel_y < H)
@@ -506,7 +520,7 @@ def main():
         pixel[:,:,0] *= condition_int
         pixel[:,:,1] *= condition_int
 
-        conditions[pin_id] = condition
+        conditions[pin_id] = condition.astype(np.float32)
         pixel_coords[pin_id] = pixel
 
     accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
@@ -561,7 +575,7 @@ def main():
 
             color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
 
-            Lerp_vectorized(0.0, color, condition.astype(np.float32), panorama)
+            Lerp_vectorized(0.0, color, condition, panorama)
         
         panorama[:,:,0] *= accumulation_normalization
         panorama[:,:,1] *= accumulation_normalization
