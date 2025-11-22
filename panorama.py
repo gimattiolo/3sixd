@@ -117,6 +117,11 @@ def UV2Angle_vectorized(uv) :
 def Lerp(a, b, x) :
     return a + (b - a) * x
 
+# a,b as H,W,3, x as H,W
+def Lerp_vectorized(a, b, x, out) :
+    for i in range(3) :
+        out[:,:,i] += a[:,:,i] + (b[:,:,i] - a[:,:,i]) * x
+    
 def Normalize(x) :
     return x / np.linalg.norm(x)
 
@@ -246,8 +251,6 @@ def main():
     # without this images are upside down
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
-
-    black_view = np.zeros((H, W, 3), np.uint8)
 
     for pin_id, cameraDatum in cameraData.items() :
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
@@ -450,7 +453,10 @@ def main():
     ray_inW = Normalize_vectorized(ray_inW)
     ray_inW = ray_inW.reshape((3,-1))    
 
-    uvs= {}
+    pixel_coords= {}
+    conditions = {}
+
+    num_acculations = np.zeros((H,W), dtype=np.float32)
 
     for pin_id, cameraDatum in cameraData.items() :
 
@@ -477,7 +483,33 @@ def main():
         ray_inV[:, :,1] *= factor
         ray_inV[:, :,2] *= factor
 
-        uvs[pin_id] = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
+        uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
+
+        # Convert u to x (column) and v to y (row)
+        pixel_x = (uvs[:, :, 0] * W).astype(np.int32)
+        pixel_y = ((1 - uvs[:, :, 1]) * H).astype(np.int32) # Invert v for image coordinates
+
+        mask_x = (0 <= pixel_x) & (pixel_x < W)
+        mask_y = (0 <= pixel_y) & (pixel_y < H)
+        condition = mask_x & mask_y
+
+        num_acculations += condition
+
+
+        # Combine into a single array of pixel coordinates
+        pixel = np.stack((pixel_y, pixel_x), axis=2)
+
+        condition_int = condition.astype(np.int32)
+
+        pixel[:,:,0] *= condition_int
+        pixel[:,:,1] *= condition_int
+
+        conditions[pin_id] = condition
+        pixel_coords[pin_id] = pixel
+
+    accumulations_den = np.maximum(1.0, num_acculations)
+
+    zeroSample = np.zeros((H,W,3), dtype=np.float32)
 
     while running :
         now = time.time()
@@ -517,34 +549,23 @@ def main():
 
         # make panorama
 
-
-
-
-        panorama[:] = black_view[:]
+        panorama.fill(0.0)
 
         shape = panorama.shape
  
         panorama = panorama.astype(np.float32) / 255.0
 
-        num_acculations = np.zeros((H,W), dtype=np.float32)
         for pin_id, cameraDatum in cameraData.items() :
 
-            uv = uvs[pin_id]
+            pixel = pixel_coords[pin_id]
 
-            _CameraTex = cameraDatum.frame
+            color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
 
-            '''
-            #color = tex2D(_CameraTex[k], uv)
-            const fixed4 color = UNITY_SAMPLE_TEX2DARRAY(_CameraTex, uv)
-            const float condition = 0.0 <= uv.x && uv.x <= 1.0 && 0.0 <= uv.y && uv.y <= 1.0
-            #const float condition = 1.0
-            panorama += lerp(zeroSample, color, condition)
-            num_acculations += condition
-            '''
-        den = np.maximum(1.0, num_acculations)
-        panorama[:,:,0] /= den
-        panorama[:,:,1] /= den
-        panorama[:,:,2] /= den
+            Lerp_vectorized(zeroSample, color, condition.astype(np.float32), panorama)
+        
+        panorama[:,:,0] /= accumulations_den
+        panorama[:,:,1] /= accumulations_den
+        panorama[:,:,2] /= accumulations_den
 
         panorama = (255.0 * panorama).astype(np.uint8)
 

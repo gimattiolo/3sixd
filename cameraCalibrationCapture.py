@@ -197,15 +197,13 @@ def main():
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
 
-    black_view = np.zeros((size_default[1], size_default[0], 3), np.uint8)
-
     for pin_id, cameraDatum in cameraData.items() :
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
     for i in range(NUM_VIEWS) :
-        concatFrames[i] = np.copy(black_view)
+        concatFrames[i] = np.zeros((size_default[1], size_default[0], 3), np.uint8)
 
     
     print("Analyzing previous captures...")
@@ -424,7 +422,7 @@ def main():
 
         if NUM_VIEWS != num_cameras :
             for i in range(len(concatFrames)) :
-                concatFrames[i][:] = black_view[:]
+                concatFrames[i].fill(0.0)
 
         capture_list = pin_ids 
         if not captureCompleted and NUM_VIEWS != num_cameras :
