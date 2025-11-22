@@ -118,9 +118,9 @@ def Lerp(a, b, x) :
     return a + (b - a) * x
 
 # a,b as H,W,3, x as H,W
-def Lerp_vectorized(a, b, x, out) :
+def Lerp_vectorized(default_color, b, x, out) :
     for i in range(3) :
-        out[:,:,i] += a[:,:,i] + (b[:,:,i] - a[:,:,i]) * x
+        out[:,:,i] += default_color + (b[:,:,i] - default_color) * x
     
 def Normalize(x) :
     return x / np.linalg.norm(x)
@@ -507,9 +507,7 @@ def main():
         conditions[pin_id] = condition
         pixel_coords[pin_id] = pixel
 
-    accumulations_den = np.maximum(1.0, num_acculations)
-
-    zeroSample = np.zeros((H,W,3), dtype=np.float32)
+    accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
 
     while running :
         now = time.time()
@@ -561,11 +559,11 @@ def main():
 
             color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
 
-            Lerp_vectorized(zeroSample, color, condition.astype(np.float32), panorama)
+            Lerp_vectorized(0.0, color, condition.astype(np.float32), panorama)
         
-        panorama[:,:,0] /= accumulations_den
-        panorama[:,:,1] /= accumulations_den
-        panorama[:,:,2] /= accumulations_den
+        panorama[:,:,0] *= accumulation_normalization
+        panorama[:,:,1] *= accumulation_normalization
+        panorama[:,:,2] *= accumulation_normalization
 
         panorama = (255.0 * panorama).astype(np.uint8)
 
