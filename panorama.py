@@ -119,6 +119,13 @@ def Lerp(a, b, x) :
 def Normalize(x) :
     return x / np.linalg.norm(x)
 
+def Normalize_vectorized(x) :
+    norm = np.linalg.norm(x, axis=2)
+    x[:,:,0] /= norm
+    x[:,:,1] /= norm
+    x[:,:,2] /= norm
+    return x 
+
 def Angle2UV(gammaTheta, offset_rad) :
     uv = np.zeros((2,1))
 
@@ -441,7 +448,7 @@ def main():
 
 
     ray_inW = Angle2Dir_vectorized(gammaTheta)
-    ray_inW = Normalize(ray_inW)
+    ray_inW = Normalize_vectorized(ray_inW)
 
     while running :
         now = time.time()
