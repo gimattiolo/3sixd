@@ -10,6 +10,9 @@ import re
 import time
 import shutil
 import WaveUtilities
+import math
+
+two_pi = 2 * math.pi
 
 class CameraDatum :
 
@@ -89,6 +92,81 @@ class CaptureDatum :
     def __init__(self) :
         self.reset()
 
+def Angle2Dir(gammaTheta) :
+    return np.array([math.sin(gammaTheta.y) * math.cos(gammaTheta.x), math.cos(gammaTheta.y), math.sin(gammaTheta.y) * math.sin(gammaTheta.x)])
+
+def Angle2Dir_vectorized(gammaTheta) :
+    X = np.sin(gammaTheta[:,:,1]) * np.cos(gammaTheta[:,:,0])
+    Y = np.cos(gammaTheta[:,:,1])
+    Z = np.sin(gammaTheta[:,:,1]) * np.sin(gammaTheta[:,:,0])
+    return np.stack((X,Y,Z), axis=2)
+
+
+def UV2Angle(uv) :
+    gammaTheta = np.zeros((2,1))
+    gammaTheta.x = math.pi * (2.0 * uv.x + 1.0)
+    #gammaTheta.x = math.pi * uv.x
+    gammaTheta.y = (1.0 - uv.y) * math.pi
+    return gammaTheta
+
+def UV2Angle_vectorized(uv) :
+    gammaTheta = np.zeros(uv.shape)
+    gammaTheta[:, :, 0] = math.pi * (2.0 * uv[:, :, 0] + 1.0)
+    #gammaTheta[:, :, 0] = math.pi * uv[:, :, 0]
+    gammaTheta[:, :, 1] = (1.0 - uv[:, :, 1]) * math.pi
+    return gammaTheta
+
+
+
+def lerp(a, b, x) :
+    return a + (b - a) * x
+
+def normalize(x) :
+    return x / np.linalg.norm(x)
+
+def Angle2UV(gammaTheta, offset_rad) :
+    uv = np.zeros((2,1))
+
+    gammaTheta.x += offset_rad
+
+    two_pi = 2 * math.pi
+    #if (gammaTheta.x > two_pi) :
+    #  gammaTheta.x = gammaTheta.x - two_pi
+    
+    gammaTheta.x = lerp(gammaTheta.x, gammaTheta.x - math.pi, gammaTheta.x > two_pi)
+				
+    uv.x = gammaTheta.x / two_pi
+
+    #ifdef PXR_FLIP_PORTAL_U
+    uv.x = 1.0 - uv.x
+    #endif
+    uv.y = gammaTheta.y / two_pi
+    #ifdef PXR_FLIP_PORTAL_V
+        #uv.y = 1.0 - uv.y
+    #endif
+	#if (_Flip > 1.0) : 
+	#	uv.y = 1.0 - uv.y
+	#
+    #uv.y = lerp(uv.y, 1.0 - uv.y, _Flip > 1.0)
+           
+    return uv
+
+def Dir2Angle(dir) :
+    # x: [0, UNITY_TWO_PI]
+    # y: [0, UNITY_PI] 
+    gammaTheta = np.zeros((2,1))
+    gammaTheta.y = math.acos(dir.y)
+
+    dir.y = 0.0
+    dir = normalize(dir)
+
+    gammaTheta.x = math.acos(dir.x)
+	#if(dir.z < 0.0)
+    #  gammaTheta.x = UNITY_TWO_PI - gammaTheta.x;
+    gammaTheta.x = lerp(gammaTheta.x, two_pi - gammaTheta.x, dir.z < 0.0)
+
+    return gammaTheta
+
 def main():
     parser = argparse.ArgumentParser('Panorama')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
@@ -124,8 +202,10 @@ def main():
     ext = '.png'
 
     # width, height
-    size_default = (1920, 1080)
-    #size_default = (400, 400)
+    W, H = (1920, 1080)
+    #W, H = (400, 400)
+
+    size_default = (W,H) 
 
     if not os.path.exists(args.path) :
         os.mkdir(args.path)
@@ -150,7 +230,7 @@ def main():
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
 
-    black_view = np.zeros((size_default[1], size_default[0], 3), np.uint8)
+    black_view = np.zeros((H, W, 3), np.uint8)
 
     for pin_id, cameraDatum in cameraData.items() :
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
@@ -158,8 +238,8 @@ def main():
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
 
-    panorama = np.zeros((size_default[1], size_default[0], 3), np.uint8)
-    
+    panorama = np.zeros((H, W, 3), np.uint8)
+
     running = True
     if SaveMode == 0 :
         pass
@@ -347,6 +427,27 @@ def main():
 
     window_visible = True
 
+    def create_array_element_u(i, j):
+        return i / W 
+
+    def create_array_element_v(i, j):
+        return j / H 
+
+
+    i_u = np.fromfunction(create_array_element_u, size_default, dtype=float)
+    i_v = np.fromfunction(create_array_element_v, size_default, dtype=float)
+
+    i_uv = np.stack((i_u, i_v), axis=2)
+
+    # xv, yv = np.meshgrid(x, y, indexing='ij')
+
+    gammaTheta = UV2Angle_vectorized(i_uv)
+
+
+
+    ray_inW = Angle2Dir_vectorized(gammaTheta)
+    ray_inW = normalize(ray_inW)
+
     while running :
         now = time.time()
 
@@ -385,10 +486,51 @@ def main():
 
         # make panorama
 
+        '''   
+        # in the following we assume the focal quad has size 1 x 1
+        # and is at distance f along z relative to the camera
+        hfovAngle = 0.5 * _FoV_rad
+
+        hh = 0.5
+        hw = hh * _AspectRatio
+        half_size = np.array([hw, hh])
+        f = hh / math.tan(hfovAngle)
 
 
 
+        panorama[:] = black_view[:]
 
+        shape = panorama.shape
+
+
+        ray_inV = np.zeros(3,1)
+        uv = np.zeros(3,1)
+
+        panorama_uv = np.zeros(panorama)
+
+
+ 
+        num_acculations = 0.0
+        for pin_id, cameraDatum in cameraData.items() :
+            # for each pixel fo the 360m texture gets the ray in world space
+
+            ray_inV = mul((float3x3)_M_W2V[k], ray_inW)
+            ray_inV *= f / max(ray_inV.z, 0.001)
+        
+            uv.xy = 0.5 * (1.0 + ray_inV.xy / half_size)
+            # uv.xy = i.uv
+            uv.z = k
+
+            #color = tex2D(_CameraTex[k], uv)
+            const fixed4 color = UNITY_SAMPLE_TEX2DARRAY(_CameraTex, uv)
+            const float condition = 0.0 <= uv.x && uv.x <= 1.0 && 0.0 <= uv.y && uv.y <= 1.0
+            #const float condition = 1.0
+            panorama += lerp(zeroSample, color, condition)
+            num_acculations += condition
+
+        panorama /= max(1.0, num_acculations);
+
+        '''
         cv2.imshow(window_name, panorama)
 
     # When everything done, release the captures
