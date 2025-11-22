@@ -101,27 +101,22 @@ def Angle2Dir_vectorized(gammaTheta) :
     Z = np.sin(gammaTheta[:,:,1]) * np.sin(gammaTheta[:,:,0])
     return np.stack((X,Y,Z), axis=2)
 
-
 def UV2Angle(uv) :
     gammaTheta = np.zeros((2,1))
     gammaTheta.x = math.pi * (2.0 * uv.x + 1.0)
-    #gammaTheta.x = math.pi * uv.x
     gammaTheta.y = (1.0 - uv.y) * math.pi
     return gammaTheta
 
 def UV2Angle_vectorized(uv) :
     gammaTheta = np.zeros(uv.shape)
     gammaTheta[:, :, 0] = math.pi * (2.0 * uv[:, :, 0] + 1.0)
-    #gammaTheta[:, :, 0] = math.pi * uv[:, :, 0]
     gammaTheta[:, :, 1] = (1.0 - uv[:, :, 1]) * math.pi
     return gammaTheta
 
-
-
-def lerp(a, b, x) :
+def Lerp(a, b, x) :
     return a + (b - a) * x
 
-def normalize(x) :
+def Normalize(x) :
     return x / np.linalg.norm(x)
 
 def Angle2UV(gammaTheta, offset_rad) :
@@ -133,7 +128,7 @@ def Angle2UV(gammaTheta, offset_rad) :
     #if (gammaTheta.x > two_pi) :
     #  gammaTheta.x = gammaTheta.x - two_pi
     
-    gammaTheta.x = lerp(gammaTheta.x, gammaTheta.x - math.pi, gammaTheta.x > two_pi)
+    gammaTheta.x = Lerp(gammaTheta.x, gammaTheta.x - math.pi, gammaTheta.x > two_pi)
 				
     uv.x = gammaTheta.x / two_pi
 
@@ -158,12 +153,12 @@ def Dir2Angle(dir) :
     gammaTheta.y = math.acos(dir.y)
 
     dir.y = 0.0
-    dir = normalize(dir)
+    dir = Normalize(dir)
 
     gammaTheta.x = math.acos(dir.x)
 	#if(dir.z < 0.0)
     #  gammaTheta.x = UNITY_TWO_PI - gammaTheta.x;
-    gammaTheta.x = lerp(gammaTheta.x, two_pi - gammaTheta.x, dir.z < 0.0)
+    gammaTheta.x = Lerp(gammaTheta.x, two_pi - gammaTheta.x, dir.z < 0.0)
 
     return gammaTheta
 
@@ -446,7 +441,7 @@ def main():
 
 
     ray_inW = Angle2Dir_vectorized(gammaTheta)
-    ray_inW = normalize(ray_inW)
+    ray_inW = Normalize(ray_inW)
 
     while running :
         now = time.time()
