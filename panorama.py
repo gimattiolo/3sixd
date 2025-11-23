@@ -27,6 +27,9 @@ class CameraDatum :
         self.Distortion = None
         self.ReprojectionError = None
         self.ImageSize = None
+        self.f_pixels = 0
+        self.h_pixels = 0
+        self.ar = 0.0
 
     def __init__(self) :
         self.reset()
@@ -92,27 +95,31 @@ class CaptureDatum :
     def __init__(self) :
         self.reset()
 
-def Angle2Dir(gammaTheta) :
-    return np.array([math.sin(gammaTheta.y) * math.cos(gammaTheta.x), math.cos(gammaTheta.y), math.sin(gammaTheta.y) * math.sin(gammaTheta.x)])
+def Angle2Dir(gamma_theta) :
+    return np.array([math.sin(gamma_theta.y) * math.sin(gamma_theta.x), math.cos(gamma_theta.y), math.sin(gamma_theta.y) * math.cos(gamma_theta.x)])
 
 # returns 3, H, W
-def Angle2Dir_vectorized(gammaTheta) :
-    X = np.sin(gammaTheta[:,:,1]) * np.cos(gammaTheta[:,:,0])
-    Y = np.cos(gammaTheta[:,:,1])
-    Z = np.sin(gammaTheta[:,:,1]) * np.sin(gammaTheta[:,:,0])
+def Angle2Dir_vectorized(gamma_theta) :
+    X = np.sin(gamma_theta[:,:,1]) * np.sin(gamma_theta[:,:,0])
+    Y = np.cos(gamma_theta[:,:,1])
+    Z = np.sin(gamma_theta[:,:,1]) * np.cos(gamma_theta[:,:,0])
     return np.stack((X,Y,Z), axis=0)
 
 def UV2Angle(uv) :
-    gammaTheta = np.zeros((2,1))
-    gammaTheta.x = math.pi * (2.0 * uv.x + 1.0)
-    gammaTheta.y = (1.0 - uv.y) * math.pi
-    return gammaTheta
+    gamma_theta = np.zeros((2,1))
+    #0 -> 0, 1 -> 2pi
+    gamma_theta.x = 2.0 * math.pi * uv.x
+    # 0 -> 0, 1 -> pi
+    gamma_theta.y = math.pi * uv.y 
+    return gamma_theta
 
 def UV2Angle_vectorized(uv) :
-    gammaTheta = np.zeros(uv.shape)
-    gammaTheta[:, :, 0] = math.pi * (2.0 * uv[:, :, 0] + 1.0)
-    gammaTheta[:, :, 1] = (1.0 - uv[:, :, 1]) * math.pi
-    return gammaTheta
+    gamma_theta = np.zeros(uv.shape)
+    #0 -> 0, 1 -> 2*pi
+    gamma_theta[:, :, 0] = 2.0 * math.pi * uv[:, :, 0]    
+    # 0 -> 0, 1 -> pi
+    gamma_theta[:, :, 1] = math.pi * uv[:, :, 1] 
+    return gamma_theta
 
 def Lerp(a0, a1, x) :
     return a0 + (a1 - a0) * x
@@ -135,59 +142,65 @@ def Normalize_vectorized(x) :
     x[2,:,:] /= norm
     return x 
 
-def Angle2UV(gammaTheta, offset_rad) :
-    uv = np.zeros((2,1))
+# def Angle2UV(gammaTheta, offset_rad) :
+#     uv = np.zeros((2,1))
 
-    gammaTheta.x += offset_rad
+#     gammaTheta.x += offset_rad
 
-    two_pi = 2 * math.pi
-    #if (gammaTheta.x > two_pi) :
-    #  gammaTheta.x = gammaTheta.x - two_pi
+#     two_pi = 2 * math.pi
+#     #if (gammaTheta.x > two_pi) :
+#     #  gammaTheta.x = gammaTheta.x - two_pi
     
-    gammaTheta.x = Lerp(gammaTheta.x, gammaTheta.x - math.pi, gammaTheta.x > two_pi)
+#     gammaTheta.x = Lerp(gammaTheta.x, gammaTheta.x - math.pi, gammaTheta.x > two_pi)
 				
-    uv.x = gammaTheta.x / two_pi
+#     uv.x = gammaTheta.x / two_pi
 
-    #ifdef PXR_FLIP_PORTAL_U
-    uv.x = 1.0 - uv.x
-    #endif
-    uv.y = gammaTheta.y / two_pi
-    #ifdef PXR_FLIP_PORTAL_V
-        #uv.y = 1.0 - uv.y
-    #endif
-	#if (_Flip > 1.0) : 
-	#	uv.y = 1.0 - uv.y
-	#
-    #uv.y = lerp(uv.y, 1.0 - uv.y, _Flip > 1.0)
+#     #ifdef PXR_FLIP_PORTAL_U
+#     uv.x = 1.0 - uv.x
+#     #endif
+#     uv.y = gammaTheta.y / two_pi
+#     #ifdef PXR_FLIP_PORTAL_V
+#         #uv.y = 1.0 - uv.y
+#     #endif
+# 	#if (_Flip > 1.0) : 
+# 	#	uv.y = 1.0 - uv.y
+# 	#
+#     #uv.y = lerp(uv.y, 1.0 - uv.y, _Flip > 1.0)
            
-    return uv
+#     return uv
 
-def Dir2Angle(dir) :
-    # x: [0, UNITY_TWO_PI]
-    # y: [0, UNITY_PI] 
-    gammaTheta = np.zeros((2,1))
-    gammaTheta.y = math.acos(dir.y)
+# def Dir2Angle(dir) :
+#     # x: [0, UNITY_TWO_PI]
+#     # y: [0, UNITY_PI] 
+#     gammaTheta = np.zeros((2,1))
+#     gammaTheta.y = math.acos(dir.y)
 
-    dir.y = 0.0
-    dir = Normalize(dir)
+#     dir.y = 0.0
+#     dir = Normalize(dir)
 
-    gammaTheta.x = math.acos(dir.x)
-	#if(dir.z < 0.0)
-    #  gammaTheta.x = UNITY_TWO_PI - gammaTheta.x;
-    gammaTheta.x = Lerp(gammaTheta.x, two_pi - gammaTheta.x, dir.z < 0.0)
+#     gammaTheta.x = math.acos(dir.x)
+# 	#if(dir.z < 0.0)
+#     #  gammaTheta.x = UNITY_TWO_PI - gammaTheta.x;
+#     gammaTheta.x = Lerp(gammaTheta.x, two_pi - gammaTheta.x, dir.z < 0.0)
 
     return gammaTheta
 
 def MakeUV(shape) :
     H,W = shape
-    def create_array_element_u(i, j):
-        return i / W 
 
+    # np arrays j is column, along x
+    def create_array_element_u(i, j):
+        return j / (W-1) 
+
+    # np arrays i is row, along y
     def create_array_element_v(i, j):
-        return j / H 
+        return i / (H-1) 
 
     i_u = np.fromfunction(create_array_element_u, shape, dtype=np.float32)
     i_v = np.fromfunction(create_array_element_v, shape, dtype=np.float32)
+
+    print(f'{i_u.min()}|{i_u.max()}')
+    print(f'{i_v.min()}|{i_v.max()}')
 
     return np.stack((i_u, i_v), axis=2)
 
@@ -229,7 +242,7 @@ def main():
     H, W = (1080, 1920)
     #H, W = (400, 400)
 
-    size_default = (W,H) 
+    size_default = (H,W) 
 
     if not os.path.exists(args.path) :
         os.mkdir(args.path)
@@ -260,7 +273,7 @@ def main():
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
 
-    panorama = np.zeros((H, W, 3), np.uint8)
+    panorama = np.zeros((H, W, 3), np.float32)
 
     running = True
     if SaveMode == 0 :
@@ -320,9 +333,9 @@ def main():
         if not cameraCalibrationOK :
             break
 
-        cameraDatum.f, cameraDatum.h, cameraDatum.ar = WaveUtilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
+        cameraDatum.f_pixels, cameraDatum.h_pixels, cameraDatum.ar = WaveUtilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
         
-        print(f'Camera {c0} using focal length {cameraDatum.f}[m], image height {cameraDatum.h}[m], aspect ratio {cameraDatum.ar}, pixelSize {pixelSize_m}[m], scale {scale}')
+        print(f'Camera {c0} using focal length {cameraDatum.f_pixels}[pixels], image height {cameraDatum.h_pixels}[pixels], aspect ratio {cameraDatum.ar}, pixelSize {pixelSize_m}[m], scale {scale}')
 
     if not cameraCalibrationOK :
         print('Unable to load camera calibrations')
@@ -338,7 +351,7 @@ def main():
     first_pin_id = pin_ids[0]
 
     ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
-    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[c0].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
+    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[first_pin_id].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
 
     # store extrinsic
     for c0, c1 in pairs :
@@ -452,7 +465,15 @@ def main():
     i_uv = MakeUV(size_default)
     gammaTheta = UV2Angle_vectorized(i_uv)
     ray_inW = Angle2Dir_vectorized(gammaTheta)
+
+    print(f'{ray_inW[0, :].min()}|{ray_inW[0, :].max()}')
+    print(f'{ray_inW[1, :].min()}|{ray_inW[1, :].max()}')
+    print(f'{ray_inW[2, :].min()}|{ray_inW[2, :].max()}')
+
+
     ray_inW = Normalize_vectorized(ray_inW)
+
+
     ray_inW = ray_inW.reshape((3,-1))    
 
     pixel_coords= {}
@@ -462,48 +483,70 @@ def main():
 
     for pin_id, cameraDatum in cameraData.items() :
 
-        c0 = pin_ids[0]
         # in the following we assume the focal quad has size 1 x 1
         # and is at distance f along z relative to the camera
-        hfovAngle_rad = math.atan(0.5 * cameraDatum.h / cameraDatum.f)
+        hfovAngle_rad = math.atan(0.5 * cameraDatum.h_pixels / cameraDatum.f_pixels)
         hfovAngle_deg = math.degrees(hfovAngle_rad)
         
-        hh = 0.5
-        hw = hh * cameraDatum.ar
-        half_size = np.array([hw, hh])
-        f = hh / math.tan(hfovAngle_rad)
+        # hh_meters = 0.5
+        # hw_meters = hh_meters * cameraDatum.ar
+        # half_size = np.array([hw_meters, hh_meters])
+        # f_meters = hh_meters / math.tan(hfovAngle_rad)
 
         # for each pixel fo the 360m texture gets the ray in world space
 
-        _M_W2V = np.ones((3,3))
+        # _M_W2V = np.ones((3,3))
 
-        print(_M_W2V)
+        # print(_M_W2V)
 
-        ray_inV = np.matmul(_M_W2V, ray_inW)
-        ray_inV = np.reshape(ray_inV, (3, H, W))
-        #3,H,W -> H,W,3
-        ray_inV = np.transpose(ray_inV, (1, 2, 0))
+        # ray_inV = np.matmul(_M_W2V, ray_inW)
+        # ray_inV = np.reshape(ray_inV, (3, H, W))
+        # #3,H,W -> H,W,3
+        # ray_inV = np.transpose(ray_inV, (1, 2, 0))
 
-        factor = f / np.maximum(ray_inV[:, :, 2], 0.001)
+        # factor = f_meters / np.maximum(ray_inV[:, :, 2], 0.001)
 
-        ray_inV[:, :,0] *= factor
-        ray_inV[:, :,1] *= factor
-        ray_inV[:, :,2] *= factor
+        # ray_inV[:, :,0] *= factor
+        # ray_inV[:, :,1] *= factor
+        # ray_inV[:, :,2] *= factor
 
-        uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
+        # uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
         
+        ######################
 
-        ps = np.dot(ProjectionMatrices[(c0, pin_id)][:, 0:3], ray_inW)
+        # r = np.array([0, 0, f_meters]).reshape((3,1))
+        # p = np.dot(ProjectionMatrices[(first_pin_id, pin_id)][:, 0:3], r)
+
+
+        ######################
+
+        # image origin in top left 
+        # image x is from left to right
+        # image y is from top to bottom
+        # z is forward
+        # right handed
+        ps = np.dot(ProjectionMatrices[(first_pin_id, pin_id)][:, 0:3], ray_inW)
+
         ps = np.reshape(ps[0:2, :], (2, H, W))
         #2,H,W -> H,W,2
         ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
+
+        
 
         # Convert u to x (column) and v to y (row)
         # pixel_x = (uvs[:, :, 0] * W).astype(np.int32)
         # pixel_y = ((1 - uvs[:, :, 1]) * H).astype(np.int32) # Invert v for image coordinates
 
+        # print(f'{pixel_x.min()=}|{pixel_x.max()=}')
+        # print(f'{pixel_y.min()=}|{pixel_y.max()=}')
+
+
         pixel_x = ps[:, :, 0]
         pixel_y = ps[:, :, 1]
+
+        print(f'{pixel_x.min()=}|{pixel_x.max()=}')
+        print(f'{pixel_y.min()=}|{pixel_y.max()=}')
+
 
         mask_x = (0 <= pixel_x) & (pixel_x < W)
         mask_y = (0 <= pixel_y) & (pixel_y < H)
@@ -513,6 +556,7 @@ def main():
 
 
         # Combine into a single array of pixel coordinates
+        # y is row, x is column
         pixel = np.stack((pixel_y, pixel_x), axis=2)
 
         condition_int = condition.astype(np.int32)
@@ -522,6 +566,8 @@ def main():
 
         conditions[pin_id] = condition.astype(np.float32)
         pixel_coords[pin_id] = pixel
+
+    print(f'{num_acculations.min()}|{num_acculations.max()}')
 
     accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
 
@@ -565,25 +611,42 @@ def main():
 
         panorama.fill(0.0)
 
-        shape = panorama.shape
- 
-        panorama = panorama.astype(np.float32) / 255.0
-
         for pin_id, cameraDatum in cameraData.items() :
+
 
             pixel = pixel_coords[pin_id]
 
             color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
 
-            Lerp_vectorized(0.0, color, condition, panorama)
+
+
+            color = np.zeros((H,W,3), np.float32)
+            #color[:,:, 2].fill(1)
+            color[:,:, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
+            color[:,:, 1] = 255.0 * pixel[:, :, 0].astype(np.float32) / 1080.0
+
+
+            Lerp_vectorized(0.0, color, conditions[pin_id], panorama)
+
+            #panorama = color
+            
+            break
+            
+
+        # panorama[:,:,0] *= accumulation_normalization
+        # panorama[:,:,1] *= accumulation_normalization
+        # panorama[:,:,2] *= accumulation_normalization
+
+
+        # value = 255.0 * accumulation_normalization / 3.0
+        # value = 255.0 * conditions[1]
+        # panorama[:,:,0] = 255.0 * conditions[1]
+        # panorama[:,:,1] = 255.0 * conditions[3]
+        # panorama[:,:,2] = 255.0 * conditions[5]
+
         
-        panorama[:,:,0] *= accumulation_normalization
-        panorama[:,:,1] *= accumulation_normalization
-        panorama[:,:,2] *= accumulation_normalization
 
-        panorama = (255.0 * panorama).astype(np.uint8)
-
-        cv2.imshow(window_name, panorama)
+        cv2.imshow(window_name, panorama.astype(np.uint8))
 
     # When everything done, release the captures
     for pin_id, cameraDatum in cameraData.items() :
