@@ -212,7 +212,7 @@ def main():
     
     print("Analyzing previous captures...")
     running = True
-    captureIndex = -1
+    nextFileCaptureIndex = -1
     if SaveMode == 0 :
         # append
         fileList = os.listdir(calibrationPath)
@@ -228,8 +228,8 @@ def main():
             pin_id = CalibrationUtilities.GetCameraIndex(filename)
             if pin_id in pin_ids:
                 thisCaptureIndex = CalibrationUtilities.GetCaptureIndex(filename)
-                if thisCaptureIndex > captureIndex :
-                    captureIndex = thisCaptureIndex
+                if thisCaptureIndex > nextFileCaptureIndex :
+                    nextFileCaptureIndex = thisCaptureIndex
     elif SaveMode == 1 :
         # delete
         shutil.rmtree(calibrationPath, ignore_errors=False, onerror=None)
@@ -238,10 +238,12 @@ def main():
         print(f'Unsupported save mode:{SaveMode}')
         exit(1)
 
-    captureIndex += 1
-    firstCaptureIndex = captureIndex
+    nextFileCaptureIndex += 1
+    firstCaptureIndex = nextFileCaptureIndex
     
-    print(f'Appending captures starting with index {captureIndex}')
+    print(f'Appending captures starting with index {nextFileCaptureIndex}')
+
+
 
     #get size of concat
     for pin_id, cameraDatum in cameraData.items() :
@@ -333,15 +335,32 @@ def main():
     while running :
         now = time.time()
         deltaTime = now - lastGridTime
+
+        if not captureCompleted and captureData[current_capture_id].counter == args.num_shots_per_capture :
+            current_capture_id += 1
+            print(f'Updated {current_capture_id=}')
+            # captureCompleted = current_capture_id >= len(captureData)
+
+        wasCaptureCompleted = captureCompleted
+        captureCompleted = current_capture_id >= len(captureData)
+
+        if captureCompleted and not wasCaptureCompleted :
+            endCaptureTime = now
+            num_captures_actual = nextFileCaptureIndex - firstCaptureIndex
+            assert num_captures_actual == num_captures_expected, f'Captures|Actual:{num_captures_actual}|Expected:{num_captures_expected}'
+            text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
+
         #print(deltaTime)
         detectGrid = (deltaTime > args.capture_delta_time_sec)
         if detectGrid :
             lastGridTime = now
 
+        for pin_id, cameraDatum in cameraData.items() :
+            cameraDatum.foundGrid = False
+
         camerasOK = True
         foundGridInAllViews = detectGrid and not captureCompleted
         for pin_id, cameraDatum in cameraData.items() :
-            cameraDatum.foundGrid = False
             if cameraDatum.capture.isOpened() :
                 # Capture frame-by-frame
                 ret, cameraDatum.frame = cameraDatum.capture.read()
@@ -391,41 +410,27 @@ def main():
             print('Unable to open all the required cameras')
             continue
 
-        if foundGridInAllViews :
-            captureData[current_capture_id].counter += 1
-            if captureData[current_capture_id].counter >= args.num_shots_per_capture :
-                current_capture_id += 1
-                captureCompleted = current_capture_id >= len(captureData)
-                if captureCompleted :
-                    endCaptureTime = now
-                    num_captures_actual = captureIndex - firstCaptureIndex + 1
-                    assert num_captures_actual == num_captures_expected, f'Captures|Actual:{num_captures_actual}|Expected:{num_captures_expected}'
-                    text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
 
         key = cv2.waitKey(waitKeyPeriod)
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
         if AUTO_SAVE or key == ord('s'):
         
-            camerasSeeingGrid = []
-            for pin_id, cameraDatum in cameraData.items() :
-                if cameraDatum.foundGrid :
-                    camerasSeeingGrid.append(pin_id)
-
-            if FORCE_SAVE or len(camerasSeeingGrid) > 0 :
-                for pin_id in camerasSeeingGrid :
+            if FORCE_SAVE or foundGridInAllViews :
+                for pin_id in captureData[current_capture_id].tuple :
                     cameraDatum = cameraData[pin_id]
                     
                     # the filename is {captureIndex}_{fileCameraIndex}.ext
-                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(captureIndex, pin_id, ext))
-                    print("Saving image " + filename)
+                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(nextFileCaptureIndex, pin_id, ext))
+                    print(f"Saving image {filename} | {captureData[current_capture_id].tuple=} | {print(f'{current_capture_id=}')}")
                     cv2.imwrite(filename, cameraDatum.frame)
-                captureIndex += 1
+
+                nextFileCaptureIndex += 1
+
+                captureData[current_capture_id].counter += 1
+
             else :
                 pass
                 #print("Checkerboard not visible in enough images! Skipping save")
-
-            for pin_id, cameraDatum in cameraData.items() :
-                cameraDatum.foundGrid = False
 
         if key == ord('q') :#or not window_visible:
             running = False
