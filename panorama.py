@@ -211,17 +211,17 @@ def MakeUV(shape) :
     return np.stack((i_u, i_v), axis=2)
 
 #each Ms[ci] is the transform from ci to c0
-def ComputeWorldToC0(Ms) :
+def ComputeWorldToC0(Ms_ci_c0) :
 
-    num_cameras = len(Ms)
+    num_cameras = len(Ms_ci_c0)
 
     Ps = [None] * num_cameras
     Vs = [None] * num_cameras
 
     eye = np.eye(4, dtype=np.float32)
     for i in range(num_cameras) :
-        Vs[i] = np.dot(Ms[i], eye[:, 2:3])[0:3]
-        Ps[i] = np.dot(Ms[i], eye[:, 3:])[0:3]
+        Vs[i] = np.dot(Ms_ci_c0[i], eye[:, 2:3])[0:3]
+        Ps[i] = np.dot(Ms_ci_c0[i], eye[:, 3:])[0:3]
 
     A = np.zeros((3 * num_cameras, num_cameras), dtype=np.float32)
     b = np.zeros((3 * num_cameras, 1), dtype=np.float32)
@@ -232,11 +232,11 @@ def ComputeWorldToC0(Ms) :
         A[r:r+3, i:i+1] = Vs[i]; 
         A[r:r+3, j:j+1] = -Vs[j]
 
-        b[r:r+3, :] = Ps[j] - Ps[0]  
+        b[r:r+3, :] = Ps[j] - Ps[i]  
 
     # num_cameras,1
     # in c0 reference framework
-    x = np.linalg.lstsq(A, b, rcond=None)
+    x, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
 
     x0 = np.zeros((3, 1), dtype=np.float32)
 
@@ -245,7 +245,7 @@ def ComputeWorldToC0(Ms) :
         x0 += p
     x0 /= num_cameras
 
-    # return c0 -> w
+    # return w -> c0
     eye[0:3, 3:] = x0
     return eye
 
@@ -480,23 +480,24 @@ def main():
         print('Unable to load stereo calibrations')
         sys.exit(1)
 
-    # store matrices from c0 -> c
-    Ms = [None] * num_cameras
+    # store matrices from c0 -> ci
+    Ms_c0_ci = [None] * num_cameras
+    Ms_ci_c0 = [None] * num_cameras
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
 
         cameraDatum = cameraData[pin_id]
 
-        # from c0 -> c
-        E_0_c_4x4 = np.identity(4)
+        # from c0 -> ci
+        Ms_c0_ci[k0] = np.identity(4)
         
         for i in range(0, k0) :
             key = (pin_ids[i], pin_ids[i + 1])
-            E_0_c_4x4 = np.dot(ExtrinsicMatrices[key], E_0_c_4x4)
+            Ms_c0_ci[k0] = np.dot(ExtrinsicMatrices[key], Ms_c0_ci[k0])
         
-        Ms[k0] = E_0_c_4x4
+        Ms_ci_c0[k0] = CalibrationUtilities.invertExtrisics(Ms_c0_ci[k0])
 
-    M_world_c0 = ComputeWorldToC0(Ms)
+    M_w_c0 = ComputeWorldToC0(Ms_ci_c0)
 
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
@@ -507,9 +508,9 @@ def main():
         
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
-        #world - > c
-        E_w_c_4x4 = np.dot(Ms[k0], M_world_c0)
-        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_c_4x4[0:3, :])
+        #world - > ci
+        E_w_ci_4x4 = np.dot(Ms_c0_ci[k0], M_w_c0)
+        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
     print("Running...")
 

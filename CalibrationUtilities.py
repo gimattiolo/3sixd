@@ -311,3 +311,17 @@ def MakePairs(input_pairs, pin_ids) :
             pair_dict[pair] = None
 
     return pairs
+
+def invertExtrisics(M) :
+    
+    invM = numpy.eye(4, dtype=numpy.float32)
+
+    R = M[0:3,0:3]
+    t = M[0:3,3:]
+    invR = numpy.transpose(R)
+    invT = numpy.dot(invR, -t) 
+    invM[0:3,0:3] = invR
+    invM[0:3,3:] = invT
+
+    return invM
+
