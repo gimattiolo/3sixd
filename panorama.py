@@ -397,9 +397,8 @@ def main():
     first_pin_id = pin_ids[0]
 
     ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
-    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[first_pin_id].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
 
-    # load extrinsic
+    # load extrinsics
     for c0, c1 in pairs :
         key = (c0, c1)
         invKey = (c1, c0)
@@ -504,13 +503,11 @@ def main():
 
         cameraDatum = cameraData[pin_id]
 
-        key = (first_pin_id, pin_id)
-        
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
         #world - > ci
         E_w_ci_4x4 = np.dot(Ms_c0_ci[k0], M_w_c0)
-        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
+        ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
     print("Running...")
 
@@ -561,7 +558,7 @@ def main():
         # image y is from top to bottom
         # z is forward
         # right handed
-        ps = np.dot(ProjectionMatrices[(first_pin_id, pin_id)][:, 0:3], ray_inW)
+        ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
         ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
         ps = np.reshape(ps[0:2, :], (2, H, W))
         #2,H,W -> H,W,2
