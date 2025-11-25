@@ -298,6 +298,9 @@ def main():
 
     pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)        
 
+    if not pairs :
+        return
+
     print("Creating capture objects...")
 
     # (0): none             - Identity (no rotation)

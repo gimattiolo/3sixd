@@ -90,8 +90,6 @@ class CaptureDatum :
 
 def main():
     parser = argparse.ArgumentParser('Capture calibration images')
-    parser.add_argument('--listcameras', dest='list_cameras', action="store_true", help='list available cameras and their indices, and exit')
-    parser.add_argument('--cameraindices', dest='camera_indices', type=int, nargs='*', help='indices of cameras to capture from')
     #parser.add_argument('--fileindices', dest='file_indices', type=int, nargs='*', help='corresponding indices for each camera when writing file names, must be same size as --cameraindices')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
     parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
@@ -99,16 +97,22 @@ def main():
     parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
     parser.add_argument('--num_shots_per_capture', type=int, default=10, help='number of images per capture')
     parser.add_argument('--capture_delta_time_sec', type=int, default=5, help='capture delta time in seconds')
+    parser.add_argument('--intrinsics_captures', type=int, nargs='+', help='capture sequence for intrisics')
+    parser.add_argument('--extrinsics_captures', type=int, nargs='+', help='capture sequence for extrinsics')
+    parser.add_argument('--allowed_pins', type=int, nargs='+', help='allowed pins')
     args = parser.parse_args()
 
-    if args.list_cameras:
-        # nameList = CalibrationUtilities.GetAvailableCameras()
-        nameList = []    
-        index = 0
-        for name in nameList:
-            print ('%d: %s' % (index, name))
-            index += 1
-        sys.exit(0)
+    args.allowed_pins.sort()
+    args.intrinsics_captures.sort()
+
+    # if args.list_cameras:
+    #     # nameList = CalibrationUtilities.GetAvailableCameras()
+    #     nameList = []    
+    #     index = 0
+    #     for name in nameList:
+    #         print ('%d: %s' % (index, name))
+    #         index += 1
+    #     sys.exit(0)
 
     FORCE_SAVE = False
 
@@ -132,9 +136,9 @@ def main():
 
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = [1, 3, 5]
+    #allowed_pins = [1, 3, 5]
 
-    cameraData = ScanCameras(allowed_pins)
+    cameraData = ScanCameras(args.allowed_pins)
 
     num_cameras = len(cameraData)
 
@@ -273,28 +277,43 @@ def main():
 
     captureData = []
 
-    cycle = False
+    # cycle = False
+    # for i in range(num_cameras) :
+    #     # single camera for intrisics
+    #     captureDatum = CaptureDatum()
+    #     captureDatum.tuple.append(pin_ids[i])
+    #     captureData.append(captureDatum)
 
-    for i in range(num_cameras) :
+    #     # camera pairs for extrisics
+    #     captureDatum = CaptureDatum()
+
+    #     if not cycle and i == num_cameras-1 :
+    #         break 
+    #     for j in range(num_simultanous) :
+    #         captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
+    #     captureData.append(captureDatum)
+
+    for pin_id in args.intrinsics_captures :
         # single camera for intrisics
         captureDatum = CaptureDatum()
-        captureDatum.tuple.append(pin_ids[i])
+        captureDatum.tuple.append(pin_id)
         captureData.append(captureDatum)
 
-        # camera pairs for extrisics
-        captureDatum = CaptureDatum()
+    pairs = CalibrationUtilities.MakePairs(args.extrinsics_captures, pin_ids)
 
-        if not cycle and i == num_cameras-1 :
-            break 
-        for j in range(num_simultanous) :
-            captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
+    if not pairs :
+        return
+
+    for pair in pairs :
+        # single camera for intrisics
+        captureDatum = CaptureDatum()
+        captureDatum.tuple.append(pair[0])
+        captureDatum.tuple.append(pair[1])
         captureData.append(captureDatum)
 
     num_captures_expected = args.num_shots_per_capture * len(captureData)
 
     current_capture_id = 0
-
-    
 
     now = time.time()
     lastGridTime = 0
