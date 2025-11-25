@@ -12,6 +12,8 @@ import shutil
 import WaveUtilities
 import math
 
+#import torch
+
 two_pi = 2 * math.pi
 
 class CameraDatum :
@@ -414,7 +416,7 @@ def main():
             [ R, T ],
         ] )
 
-        invR = np.linalg.inv(R)
+        invR = np.transpose(R)
         #invT = -inverse(R) * T
         invT = -np.dot(invR, T) 
 
@@ -475,7 +477,7 @@ def main():
         print('Unable to load stereo calibrations')
         sys.exit(1)
 
-    # store projection matrices from c0 -> c
+    # store matrices from c0 -> c
     Ms = [None] * num_cameras
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
@@ -502,8 +504,6 @@ def main():
         
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
-        E_0_c_4x4
-
         #world - > c
         E_w_c_4x4 = np.dot(Ms[k0], M_world_c0)
         ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_c_4x4[0:3, :])
