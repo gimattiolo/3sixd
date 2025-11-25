@@ -208,6 +208,45 @@ def MakeUV(shape) :
 
     return np.stack((i_u, i_v), axis=2)
 
+#each Ms[ci] is the transform from ci to c0
+def ComputeWorldToC0(Ms) :
+
+    num_cameras = len(Ms)
+
+    Ps = [None] * num_cameras
+    Vs = [None] * num_cameras
+
+    eye = np.eye(4, dtype=np.float32)
+    for i in range(num_cameras) :
+        Vs[i] = np.dot(Ms[i], eye[:, 2:3])[0:3]
+        Ps[i] = np.dot(Ms[i], eye[:, 3:])[0:3]
+
+    A = np.zeros((3 * num_cameras, num_cameras), dtype=np.float32)
+    b = np.zeros((3 * num_cameras, 1), dtype=np.float32)
+
+    for i in range(num_cameras) :
+        j = (i + 1) % num_cameras
+        r = 3*i
+        A[r:r+3, i:i+1] = Vs[i]; 
+        A[r:r+3, j:j+1] = -Vs[j]
+
+        b[r:r+3, :] = Ps[j] - Ps[0]  
+
+    # num_cameras,1
+    # in c0 reference framework
+    x = np.linalg.lstsq(A, b, rcond=None)
+
+    x0 = np.zeros((3, 1), dtype=np.float32)
+
+    for i in range(num_cameras) :
+        p = Ps[i] + x[i] * Vs[i] 
+        x0 += p
+    x0 /= num_cameras
+
+    # return c0 -> w
+    eye[0:3, 3:] = x0
+    return eye
+
 def main():
     parser = argparse.ArgumentParser('Panorama')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
@@ -349,15 +388,13 @@ def main():
 
     ProjectionMatrices = {}
     ExtrinsicMatrices = {}
-    CamToWorldMatrices = {}
-    WorldToCamMatrices = {}
 
     first_pin_id = pin_ids[0]
 
     ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
     ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[first_pin_id].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
 
-    # store extrinsic
+    # load extrinsic
     for c0, c1 in pairs :
         key = (c0, c1)
         invKey = (c1, c0)
@@ -371,7 +408,6 @@ def main():
             break
 
         # print(f'Stereo pair {c0}->{c1} using\nR=\n{R}\nT=\n{T}\nS={S}')
-
         
         # from c0 to c1
         E3x4 = np.block( [
@@ -401,45 +437,62 @@ def main():
         ExtrinsicMatrices[invKey] = invE4x4
 
         # load worldspace info
-        worldSpaceFilename = os.path.join(args.world_space_path, f'worldSpaceCalibration{c0}.json')
-        worldSpaceCalibrationLoaded, R, T, S = WaveUtilities.LoadWorldSpaceCalibration(worldSpaceFilename)
-        if worldSpaceCalibrationLoaded:
-            # from world to c0
-            WC3x4 = np.block( [
-                [ R, T ],
-            ] )
+        # worldSpaceFilename = os.path.join(args.world_space_path, f'worldSpaceCalibration{c0}.json')
+        # worldSpaceCalibrationLoaded, R, T, S = WaveUtilities.LoadWorldSpaceCalibration(worldSpaceFilename)
+        # if worldSpaceCalibrationLoaded:
+        #     # from world to c0
+        #     WC3x4 = np.block( [
+        #         [ R, T ],
+        #     ] )
 
-            WC4x4 = np.block( [
-                [ WC3x4 ],
-                [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-            ])
+        #     WC4x4 = np.block( [
+        #         [ WC3x4 ],
+        #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+        #     ])
 
-            invR = np.linalg.inv(R)
-            invT = -np.dot(invR, T) 
+        #     invR = np.linalg.inv(R)
+        #     invT = -np.dot(invR, T) 
 
-            # from c0 to world
-            invWC3x4 = np.block( [
-                [ invR, invT ],
-            ] )            
+        #     # from c0 to world
+        #     invWC3x4 = np.block( [
+        #         [ invR, invT ],
+        #     ] )            
 
-            invWC4x4 = np.block( [
-                [ invWC3x4 ],
-                [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-            ] )
+        #     invWC4x4 = np.block( [
+        #         [ invWC3x4 ],
+        #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+        #     ] )
 
-            # store the matrix to transform from each camera's space to world space
-            CamToWorldMatrices[c0] = invWC4x4
-            WorldToCamMatrices[c0] = WC4x4
-        else:
-            # identity
-            CamToWorldMatrices[c0] = np.identity(4)
-            WorldToCamMatrices[c0] = np.identity(4)
+        #     # store the matrix to transform from each camera's space to world space
+        #     CamToWorldMatrices[c0] = invWC4x4
+        #     WorldToCamMatrices[c0] = WC4x4
+        # else:
+        #     # identity
+        #     CamToWorldMatrices[c0] = np.identity(4)
+        #     WorldToCamMatrices[c0] = np.identity(4)
 
     if not stereoCalibrationOK :
         print('Unable to load stereo calibrations')
         sys.exit(1)
 
     # store projection matrices from c0 -> c
+    Ms = [None] * num_cameras
+    for k0 in range(num_cameras) :
+        pin_id = pin_ids[k0]
+
+        cameraDatum = cameraData[pin_id]
+
+        # from c0 -> c
+        E_0_c_4x4 = np.identity(4)
+        
+        for i in range(0, k0) :
+            key = (pin_ids[i], pin_ids[i + 1])
+            E_0_c_4x4 = np.dot(ExtrinsicMatrices[key], E_0_c_4x4)
+        
+        Ms[k0] = E_0_c_4x4
+
+    M_world_c0 = ComputeWorldToC0(Ms)
+
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
 
@@ -449,14 +502,11 @@ def main():
         
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
-        # from c0 -> c
-        E_0_c_4x4 = np.identity(4)
-        
-        for i in range(0, k0) :
-            E_0_c_4x4 = np.dot(ExtrinsicMatrices[(pin_ids[i], pin_ids[i + 1])], E_0_c_4x4)
-        
-        E_0_c_3x4 = E_0_c_4x4[0:3, :]
-        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_0_c_3x4)
+        E_0_c_4x4
+
+        #world - > c
+        E_w_c_4x4 = np.dot(Ms[k0], M_world_c0)
+        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_c_4x4[0:3, :])
 
     print("Running...")
 
@@ -597,11 +647,9 @@ def main():
 
             Lerp_vectorized(0.0, color, conditions[pin_id], panorama)
 
-            break
-
-        # panorama[:,:,0] *= accumulation_normalization
-        # panorama[:,:,1] *= accumulation_normalization
-        # panorama[:,:,2] *= accumulation_normalization
+        panorama[:,:,0] *= accumulation_normalization
+        panorama[:,:,1] *= accumulation_normalization
+        panorama[:,:,2] *= accumulation_normalization
 
         cv2.imshow(window_name, panorama.astype(np.uint8))
 
