@@ -11,7 +11,7 @@
                 "--path", "~/gits/3sixd/calibration_data_test",
                 "--auto", "1",
                 "--save_mode", "0",
-                "--num_shots_per_capture", "10",
+                "--num_shots_per_capture", "15",
                 "--capture_delta_time_sec", "5",
                 "--allowed_pins", "1", "3", "5",
                 "--intrinsics_captures", "1", "3", "5",

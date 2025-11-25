@@ -398,7 +398,8 @@ def main():
                 captureCompleted = current_capture_id >= len(captureData)
                 if captureCompleted :
                     endCaptureTime = now
-                    assert (captureIndex - firstCaptureIndex + 1) == num_captures_expected, f'Captures|Actual:{num_captures}|Expected:{num_captures_expected}'
+                    num_captures_actual = captureIndex - firstCaptureIndex + 1
+                    assert num_captures_actual == num_captures_expected, f'Captures|Actual:{num_captures_actual}|Expected:{num_captures_expected}'
                     text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
 
         key = cv2.waitKey(waitKeyPeriod)
