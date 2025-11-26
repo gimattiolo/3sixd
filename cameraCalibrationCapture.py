@@ -363,23 +363,25 @@ def main():
         camerasOK = True
         foundGridInAllViews = detectGrid and not captureCompleted
         for pin_id, cameraDatum in cameraData.items() :
-            if cameraDatum.capture.isOpened() :
-                # Capture frame-by-frame
-                ret, cameraDatum.frame = cameraDatum.capture.read()
+            text_pin = f'Pin{pin_id}'
+            if not captureCompleted :
+                pin_in_process = pin_id in captureData[current_capture_id].tuple
 
-                if not ret :
-                    print(f'{pin_id} not reading frames')
+                if not pin_in_process :
                     continue
 
-                cameraDatum.decoratedFrame = cameraDatum.frame.copy()
+                if cameraDatum.capture.isOpened() :
+                    # Capture frame-by-frame
+                    ret, cameraDatum.frame = cameraDatum.capture.read()
 
-                text_pin = f'Pin{pin_id}'
+                    if not ret :
+                        print(f'{pin_id} not reading frames')
+                        continue
 
-                if not captureCompleted :
-                    pin_in_process = pin_id in captureData[current_capture_id].tuple
-                    if pin_in_process :
-                        text_pin += f'#'
-                    if detectGrid and pin_in_process :
+                    cameraDatum.decoratedFrame = cameraDatum.frame.copy()
+
+                    text_pin += f'#'
+                    if detectGrid :
                     
                         gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
                         cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
