@@ -412,13 +412,17 @@ def main():
         if AUTO_SAVE or key == ord('s'):
         
             if foundGridInAllViews :
+                msg = f'Saved '
                 for pin_id in captureData[current_capture_id].tuple :
                     cameraDatum = cameraData[pin_id]
                     
-                    # the filename is {captureIndex}_{fileCameraIndex}.ext
-                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(nextFileCaptureIndex, pin_id, ext))
-                    print(f"Saving image {filename} | {captureData[current_capture_id].tuple=} | {print(f'{current_capture_id=}')}")
-                    cv2.imwrite(filename, cameraDatum.frame)
+                    # the filename is {nextFileCaptureIndex}_{fileCameraIndex}.ext
+                    filename = CalibrationUtilities.GetCaptureName(nextFileCaptureIndex, pin_id, ext)
+                    filepath = os.path.join(calibrationPath, filename)
+                    msg += f'{filename},'
+
+                    cv2.imwrite(filepath, cameraDatum.frame)
+                print(f'{msg} | {captureData[current_capture_id].tuple} | {current_capture_id=} | {captureData[current_capture_id].counter}')
 
                 nextFileCaptureIndex += 1
 
