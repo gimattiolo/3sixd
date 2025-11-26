@@ -664,13 +664,14 @@ def main():
         panorama[:,:,1] *= accumulation_normalization
         panorama[:,:,2] *= accumulation_normalization
 
-
+        # save screenshot
         if key == ord('s') :
             filename = os.path.join(args.path, f'panorama_{output_id}.png')
             if cv2.imwrite(filename=filename, img=panorama) :
+                print(f'Screenshot saved:{filename}')
                 output_id += 1
             else : 
-                print(f'Unable to save into {filename}')
+                print(f'Unable to save screenshot:{filename}')
  
         cv2.imshow(window_name, panorama.astype(np.uint8))
 
