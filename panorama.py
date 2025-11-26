@@ -597,6 +597,8 @@ def main():
     ray_inW = np.reshape(ray_inW, (3, H, W))
     ray_inW = np.transpose(ray_inW, (1, 2, 0))
 
+    output_id = 0
+
     while running :
         now = time.time()
 
@@ -662,6 +664,14 @@ def main():
         panorama[:,:,1] *= accumulation_normalization
         panorama[:,:,2] *= accumulation_normalization
 
+
+        if key == ord('s') :
+            filename = os.path.join(args.path, f'panorama_{output_id}.png')
+            if cv2.imwrite(filename=filename, img=panorama) :
+                output_id += 1
+            else : 
+                print(f'Unable to save into {filename}')
+ 
         cv2.imshow(window_name, panorama.astype(np.uint8))
 
     # When everything done, release the captures
