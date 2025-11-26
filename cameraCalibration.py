@@ -30,9 +30,10 @@ def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZon
     corners_subPix = cv2.cornerSubPix(gray, corners, searchSize, zeroZoneSize, criteria)
     return True, corners_subPix
 
+# see https://docs.opencv.org/4.x/da/d0d/tutorial_camera_calibration_pattern.html
 # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_calib3d/py_calibration/py_calibration.html
 # see https://docs.opencv.org/master/dc/dbb/tutorial_py_calibration.html
-def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, useGuess, intrinsicMatrix, distortion, debug_path) :
+def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, useIntrinsicsGuess, intrinsicMatrix, distortion, debug_path) :
     # Array to store image points from all the images.
     imagePoints = [] # 2d points in image plane.
 
@@ -66,12 +67,12 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, 
        
     size = (imageSize[1], imageSize[2])
 
-    print(f'Guess flag enabled : {useGuess}')
+    print(f'Guess flag enabled : {useIntrinsicsGuess}')
        
     print(f'Running calibration routine. This might take a while and be unresponsive, depending on the number of input images : {numImages}')
     flags = 0
     
-    if useGuess :   
+    if useIntrinsicsGuess :   
         flags = cv2.CALIB_USE_INTRINSIC_GUESS 
     
     error, intrinsicMatrix, distortion, rvecs, tvecs = cv2.calibrateCamera(objectPoints, imagePoints, size, intrinsicMatrix, distortion, None, None, flags, criteria)
@@ -203,6 +204,7 @@ def main():
     parser.add_argument('--max_images', type=int, default=-1, help='maximum number of images to load')
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
     parser.add_argument('--debug_path', type=str, help='path for debug decorated images')
+    parser.add_argument('--use_intrinsics_guess', action="store_true", help='use guess for intrinsics')
 
     args = parser.parse_args()
 
@@ -306,7 +308,9 @@ def main():
 
             camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
 
-            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], args.debug_path)
+            useIntrinsicsGuess = args.use_intrinsics_guess and camaraCalibrationLoaded
+
+            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], useIntrinsicsGuess, intrinsicMatrices[pin_id], distortions[pin_id], args.debug_path)
             jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], sizesPerCamera[pin_id][0]) 
 
             filename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')

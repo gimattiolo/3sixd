@@ -50,7 +50,7 @@
                 "--intrinsic_path", "~/gits/3sixd/calibration_data2",
                 "--extrinsic_path", "~/gits/3sixd/calibration_data2",
                 "--debug_path", "~/gits/3sixd/temp",
-                
+                "--use_intrinsics_guess",                
                 //"--intrinsic",
                 "--extrinsic",
                 

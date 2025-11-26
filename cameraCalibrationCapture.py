@@ -19,7 +19,7 @@ class CameraDatum :
         self.file = ''
         self.capture = None
         self.frame = None
-        self.decoratedFrames = None
+        self.decoratedFrame = None
         self.foundGrid = False
         self.size = (0,0)
         self.scale = 0
@@ -363,25 +363,26 @@ def main():
         camerasOK = True
         foundGridInAllViews = detectGrid and not captureCompleted
         for pin_id, cameraDatum in cameraData.items() :
-            text_pin = f'Pin{pin_id}'
-            if not captureCompleted :
-                pin_in_process = pin_id in captureData[current_capture_id].tuple
+            if cameraDatum.capture.isOpened() :
 
-                if not pin_in_process :
+                # Capture frame-by-frame
+                ret, cameraDatum.frame = cameraDatum.capture.read()
+
+                if not ret :
+                    print(f'{pin_id} not reading frames')
                     continue
 
-                if cameraDatum.capture.isOpened() :
-                    # Capture frame-by-frame
-                    ret, cameraDatum.frame = cameraDatum.capture.read()
+                cameraDatum.decoratedFrame = cameraDatum.frame.copy()
 
-                    if not ret :
-                        print(f'{pin_id} not reading frames')
-                        continue
+                text_pin = f'Pin{pin_id}'
 
-                    cameraDatum.decoratedFrame = cameraDatum.frame.copy()
+                if not captureCompleted :
+                    pin_in_process = pin_id in captureData[current_capture_id].tuple
 
-                    text_pin += f'#'
-                    if detectGrid :
+                    if pin_in_process :
+                        text_pin += f'#'
+
+                    if detectGrid and pin_in_process :
                     
                         gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
                         cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
@@ -454,9 +455,8 @@ def main():
 
         # y, x
 
-        if NUM_VIEWS != num_cameras :
-            for i in range(len(concatFrames)) :
-                concatFrames[i].fill(0.0)
+        for i in range(len(concatFrames)) :
+            concatFrames[i].fill(0.0)
 
         capture_list = pin_ids 
         if not captureCompleted and NUM_VIEWS != num_cameras :
@@ -466,9 +466,11 @@ def main():
         frame_id = 0        
         for pin_id in capture_list :
             cameraDatum = cameraData[pin_id]
+            
             scaledSize = ( (int)(cameraDatum.scale * cameraDatum.size[0]), (int)(cameraDatum.scale * cameraDatum.size[1]))
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
-            concatFrames[frame_id][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
+            if not cameraDatum.decoratedFrame is None :
+                concatFrames[frame_id][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
             frame_id += 1
             if frame_id >= NUM_VIEWS :
                 break
