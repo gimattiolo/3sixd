@@ -62,5 +62,14 @@
                 "--pairs", "1", "3", "3", "5",
             ]
         },
+        {
+            "name": "optimize",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "D:/Development/gits/3sixd/optimize.py",
+            "console": "integratedTerminal",
+            "args": [
+            ]
+        },
     ]
 }
