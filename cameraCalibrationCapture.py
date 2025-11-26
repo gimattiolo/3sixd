@@ -114,8 +114,6 @@ def main():
     #         index += 1
     #     sys.exit(0)
 
-    FORCE_SAVE = False
-
     AUTO_SAVE = False
     #in msec
     waitKeyPeriod = 1
@@ -330,7 +328,6 @@ def main():
 
     window_visible = True
 
-
     captureCompleted = False
     while running :
         now = time.time()
@@ -338,8 +335,6 @@ def main():
 
         if not captureCompleted and captureData[current_capture_id].counter == args.num_shots_per_capture :
             current_capture_id += 1
-            print(f'Updated {current_capture_id=}')
-            # captureCompleted = current_capture_id >= len(captureData)
 
         wasCaptureCompleted = captureCompleted
         captureCompleted = current_capture_id >= len(captureData)
@@ -349,6 +344,7 @@ def main():
             num_captures_actual = nextFileCaptureIndex - firstCaptureIndex
             assert num_captures_actual == num_captures_expected, f'Captures|Actual:{num_captures_actual}|Expected:{num_captures_expected}'
             text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
+            print(f'{text_info}')
 
         #print(deltaTime)
         detectGrid = (deltaTime > args.capture_delta_time_sec)
@@ -415,7 +411,7 @@ def main():
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
         if AUTO_SAVE or key == ord('s'):
         
-            if FORCE_SAVE or foundGridInAllViews :
+            if foundGridInAllViews :
                 for pin_id in captureData[current_capture_id].tuple :
                     cameraDatum = cameraData[pin_id]
                     
