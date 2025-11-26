@@ -287,8 +287,8 @@ def MakePairs(input_pairs, pin_ids) :
     
     num_pairs = len(input_pairs)
 
-    for i in range(num_pairs) :
-        j = (i+1) % num_pairs
+    for i in range(num_pairs-1) :
+        j = (i+1)
         pairs.append((input_pairs[i], input_pairs[j]))
 
     # check pairs

@@ -610,7 +610,7 @@ def main():
 
                 if not ret :
                     print(f'{pin_id} not reading frames')
-                    continue
+                    cameraDatum.frame = empty_frame
 
             else :
                 camerasOK = False
@@ -640,13 +640,7 @@ def main():
 
             pixel = pixel_coords[pin_id]
 
-            if cameraDatum.frame is None :
-                # display empty frame
-                color = empty_frame
-            else :
-                color = cameraDatum.frame
-
-            color = color[pixel[:, :, 0], pixel[:, :, 1], :]
+            color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
 
             ### debug ###
 

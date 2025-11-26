@@ -429,7 +429,8 @@ def main():
                     filepath = os.path.join(calibrationPath, filename)
                     msg += f'{filename},'
 
-                    cv2.imwrite(filepath, cameraDatum.frame)
+                    if not cv2.imwrite(filepath, cameraDatum.frame) :
+                        print('Unable to save frame to {filepath}')
                 print(f'{msg} | {captureData[current_capture_id].tuple} | {current_capture_id=} | {captureData[current_capture_id].counter}')
 
                 nextFileCaptureIndex += 1

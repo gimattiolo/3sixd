@@ -305,10 +305,6 @@ def main():
 
         pin_ids = list(imagesPerCamera.keys())
 
-        if len(args.pairs) % 2 != 0 :
-            print(f'Incorrect pairs')
-            exit(1) 
-
         pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)
 
 
