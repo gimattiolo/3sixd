@@ -11,9 +11,166 @@ import time
 import shutil
 import WaveUtilities
 import math
+import torch
+
+def MakeRotationMatrixX(a) :
+    sinA = math.sin(a)
+    cosA = math.cos(a)
+    R = torch.eye(3, dtype=torch.float32)
+    R[1,1] = cosA
+    R[1,2] = -sinA
+    R[2,1] = sinA
+    R[2,2] = cosA
+    return R
+
+def MakeRotationMatrixY(a) :
+    sinA = math.sin(a)
+    cosA = math.cos(a)
+    R = torch.eye(3, dtype=torch.float32)
+    R[0,0] = cosA
+    R[0,2] = -sinA
+    R[2,0] = sinA
+    R[2,2] = cosA
+    return R
+
+def MakeRotationMatrixZ(a) :
+    sinA = math.sin(a)
+    cosA = math.cos(a)
+    R = torch.eye(3, dtype=torch.float32)
+    R[0,0] = cosA
+    R[0,1] = -sinA
+    R[1,0] = sinA
+    R[1,1] = cosA
+    return R
+
+def MakeRotationMatrix(a,b,c) :
+    sinA = math.sin(a)
+    cosA = math.cos(a)
+    sinB = math.sin(b)
+    cosB = math.cos(b)
+    sinC = math.sin(c)
+    cosC = math.cos(c)
+
+    #Rz * Ry * Rx    
+    R =torch.eye(3, dtype=torch.float32)
+    R[0,0] = cosB * cosC
+    R[0,1] = - sinA * sinB * cosC - cosA * sinC
+    R[0,2] = - cosA * sinB * cosC + sinA * sinC
+
+    R[1,0] = cosB * sinC
+    R[1,1] = - sinA * sinB * sinC + cosA * cosC
+    R[1,2] = - cosA * sinB * sinC - sinA * cosC
+
+    R[2,0] = sinB
+    R[2,1] = sinA * cosB
+    R[2,2] = cosA * cosB
+
+    return R
+
+class OptimizableTransform(torch.nn.Module):
+    def __init__(self, angles, translation):
+        super().__init__()
+
+        self.angles = torch.nn.Parameter(data=angles, dtype=torch.float32)
+        self.translation = torch.nn.Parameter(data=translation, dtype=torch.float32)
+
+        self.M = torch.zeros(3,4, dtype=torch.float32)
+
+    def forward(self, x):
+        self.M[0:3,0:3] = MakeRotationMatrix(self.angles)
+        self.M[0:3,3:] = self.translation
+
+class OptimizableTransforms(torch.nn.Module):
+    def __init__(self, angles, translations):
+        super().__init__()
+        n = len(angles)
+        self.modules = torch.nn.ModuleList()
+        for i in range(n) : 
+            self.modules.append(OptimizableTransform(angles[i], translations[i]))
+
+    def forward(self, x):
+        outputs = x
+        for i in range(len(self.modules)) :
+            outputs = self.modules[i](outputs)
+        return outputs
+
+def BackPropagation(rank, batch_id, model, loss, scaler, optimizer) :
+
+    # clear model param gradients after update 
+    optimizer.zero_grad(set_to_none=True) # set_to_none=True here can modestly improve performance
+    
+    if USE_SCALER :
+        #with torch.autograd.detect_anomaly(True) :
+        # Scales loss.  Calls backward() on scaled loss to create scaled gradients.
+        scaler.scale(loss).backward()
+    else :    
+        loss.backward()
+
+    parameters = model.parameters()
+    if CHECK_GRAD :
+        for p in list(parameters) :
+            if p.grad is None :
+                Log(rank, f'NONE GRAD!')
+                break
+            if utilities.IsInvalidTorchTensor(p.grad) :
+                Log(rank, f'INVALID GRAD!')
+                break
+
+    if GRAD_FIXING :
+        #if None, positive infinity values are replaced with the greatest finite value representable by input’s dtype
+        for p in list(filter(lambda p : p.grad is not None, parameters)):
+            torch.nan_to_num_(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if GRAD_CLIPPING :
+        if USE_SCALER :
+            # Unscales the gradients of optimizer's assigned params in-place
+            # then clip unscaled gradient
+            scaler.unscale_(optimizer)
+        #torch.nn.utils.clip_grad_value_(parameters, clip_value=1.0)
+        torch.nn.utils.clip_grad_norm_(parameters, max_norm=100.0, error_if_nonfinite=True)
+
+    if USE_SCALER :
+        # optimizer's gradients are already unscaled, so scaler.step does not unscale them,
+        # although it still skips optimizer.step() if the gradients contain infs or NaNs.
+        scaler.step(optimizer)
+        # Updates the scale for next iteration.
+        scaler.update()
+    else :    
+        optimizer.step()
+
+    global CHECK_UNUSED_PARAMS
+    if batch_id == 0 and CHECK_UNUSED_PARAMS :
+        can_set_static_graph = model._get_ddp_logging_data().get('can_set_static_graph')
+        model_name = model.module.__class__.__name__
+        GlobalLog(rank, f'{model_name}|can_set_static_graph:{can_set_static_graph}')
+        GlobalLog(rank, f'{model_name}|Unused params:')
+        unused = 0
+        for name, param in model.named_parameters() :
+            if param.grad is None:
+                GlobalLog(rank, f'\t{name}')
+                unused +=1
+        if unused > 0 :
+            Abort(rank)
+            return
+        GlobalLog(rank, '\tN/A')
+
+def SetTrainMode(model, train) :
+    model.train(mode=train)
+    model.requires_grad_(train)
+
+def ComputeLoss(rank, batch, outputs) :
+
+    inputs = batch['input_data'].to(rank) 
+    targets = batch['target_data'].to(rank)
+
+    return None
+    
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser('Panorama')
+    
+    args = parser.parse_args()
 
     radius = 1.0
 
@@ -63,9 +220,71 @@ if __name__ == "__main__":
         j = (i+1)% num_cameras
         key = (i, j)
         ExtrinsicMatrices[key] = np.dot(M_w_c[j], M_c_w[i])
-        ExtrinsicMatrices_noisy[key] = 
+        ExtrinsicMatrices_noisy[key] = np.copy(ExtrinsicMatrices[key])
 
 
+model = OptimizableTransforms(angles, translations)
+
+SetTrainMode(model, train=True)
+
+args.num_epochs = 100
+
+rank = 'cuda0'
+
+# Begin training 
+for epoch in range(0, args.num_epochs):
+
+    # <BEGIN EPOCH>
+
+    log_this_epoch = epoch % args.log_period == 0
+    
+    epoch_start_time = time.time()
+
+    # Set the model in training mode
+    
+    # avg_l1 = 0
+    rank_data_loader_iterator = iter(rank_train_dataset_loader)
+    rank_dataset_size = 0 
+
+    for batch_id in range(0, len(rank_train_dataset_loader)) :
+
+        # <BEGIN BATCH>
+
+        # if log_this_epoch :
+        #     GlobalLog(rank, f"Batch: {batch_id}/{num_rank_train_batches}")
+
+        batch_start_time = time.time()
+
+    
+        batch = next(rank_data_loader_iterator)
+
+        io_duration = time.time() - batch_start_time
+        
+        all_outputs = model(batch)
+        loss =  ComputeLoss(rank, epoch, batch, all_outputs, args.model_name, discriminator, inference=False)
+        BackPropagation(rank, batch_id, model, loss, scaler, optimizer)
+        
+        # this is the average over the batch size - the last one might have a different size than the others
+        batch_train_loss = loss.item()
+        rank_dataset_size += input_tensor.size()[0]
+        # batch loss is the average on the batch and we need the sum to be able to compute the average on the whole dataset across all ranks
+        rank_train_metrics.entries['loss'] += batch_train_loss * input_tensor.size()[0]
+
+        batch_duration = time.time() - batch_start_time
+
+        # <END BATCH>
+
+    # check once if the model parameters are all used during training
+    global CHECK_UNUSED_PARAMS
+    if CHECK_UNUSED_PARAMS :
+        CHECK_UNUSED_PARAMS = False
+
+    if args.graphics_plot_period > 0 and epoch % args.graphics_plot_period == 0 :
+        plot_id = 0
+        plotter.Append(0, epoch, epoch_train_loss)
+        plotter.UpdateAnimation(plot_id); plot_id +=1
+
+        plotter.Pause()
 
 
 
