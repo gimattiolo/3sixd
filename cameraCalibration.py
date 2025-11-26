@@ -8,12 +8,20 @@ import time
 import CalibrationUtilities
 import WaveUtilities
 
-def ComputeImagePointCorners(image, patternSize, searchSize, zeroZoneSize):
+def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path):
     gray = cv2.cvtColor( image, cv2.COLOR_BGR2GRAY )
     ret, corners = cv2.findChessboardCorners(gray, patternSize, None)
     if not ret :
         print(f'Unable to find chessboard corners')
         return False, None
+    
+    decorated_frame = cv2.drawChessboardCorners(image, patternSize, corners, ret)      
+    file_name = os.path.basename(image_path)              
+    filename_without_ext, ext = os.path.splitext(file_name)
+    file_name = f'{filename_without_ext}_decorated{ext}'
+    filepath = os.path.join(debug_path, file_name)
+    if not cv2.imwrite(filepath, decorated_frame) :
+        print(f'Unable to save frame to {filepath}')
 
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-5)
@@ -23,13 +31,14 @@ def ComputeImagePointCorners(image, patternSize, searchSize, zeroZoneSize):
 
 # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_calib3d/py_calibration/py_calibration.html
 # see https://docs.opencv.org/master/dc/dbb/tutorial_py_calibration.html
-def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, useGuess, intrinsicMatrix, distortion) :
+def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, useGuess, intrinsicMatrix, distortion, debug_path) :
     # Array to store image points from all the images.
     imagePoints = [] # 2d points in image plane.
 
     for i in range(0, len(images)) :
-        print(f'Processing image {i} {images[i][1]}')
-        success, corners_subPix = ComputeImagePointCorners(images[i][0], patternSize, searchSize, zeroZoneSize)
+        image, image_path = images[i]
+        print(f'Processing image {i} {image_path}')
+        success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path)
         if not success:
             continue
         imagePoints.append(corners_subPix)
@@ -192,8 +201,12 @@ def main():
     parser.add_argument('--zero_zone_size', type=int, nargs=2, help='search zone dead region half-size that is ignored when looking for checkerboard gradients')
     parser.add_argument('--max_images', type=int, default=-1, help='maximum number of images to load')
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
+    parser.add_argument('--debug_path', type=str, help='path for debug decorated images')
 
     args = parser.parse_args()
+
+    if not os.path.exists(args.debug_path) :
+        os.mkdir(args.debug_path)
 
     modeTotals = (1 if args.intrinsic else 0) + (1 if args.extrinsic else 0) + (1 if args.world_space else 0)
     if modeTotals != 1:
@@ -290,7 +303,7 @@ def main():
 
             camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
 
-            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id])
+            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], args.debug_path)
             jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], sizesPerCamera[pin_id][0]) 
 
             filename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')
@@ -331,7 +344,8 @@ def main():
             images = imagesPerCamera[c]
             
             for i in range(0, len(images)):
-                success, corners_subPix = ComputeImagePointCorners(images[i][0], patternSize, searchSize, zeroZoneSize)
+                image, image_path = images[i]
+                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, args.debug_path)
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
@@ -433,7 +447,8 @@ def main():
             # compute image points
             images = imagesPerCamera[c]
             for i in range(0, len(images)):
-                success, corners_subPix = ComputeImagePointCorners(images[i][0], patternSize, searchSize, zeroZoneSize)
+                image, image_path = images[i]
+                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, args.debug_path)
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:

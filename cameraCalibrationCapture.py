@@ -430,7 +430,7 @@ def main():
                     msg += f'{filename},'
 
                     if not cv2.imwrite(filepath, cameraDatum.frame) :
-                        print('Unable to save frame to {filepath}')
+                        print(f'Unable to save frame to {filepath}')
                 print(f'{msg} | {captureData[current_capture_id].tuple} | {current_capture_id=} | {captureData[current_capture_id].counter}')
 
                 nextFileCaptureIndex += 1
