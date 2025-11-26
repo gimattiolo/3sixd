@@ -639,7 +639,7 @@ def main():
             pixel = pixel_coords[pin_id]
 
             if cameraDatum.frame is None :
-                # display black
+                # display empty frame
                 color = empty_frame
             else :
                 color = cameraDatum.frame
