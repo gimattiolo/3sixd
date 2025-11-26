@@ -289,6 +289,10 @@ def main():
 
     size_default = (H,W) 
 
+    empty_frame = np.zeros((H, W, 3), dtype=np.float32)
+
+    empty_frame[:, :, 2] = 255.0 
+
     if not os.path.exists(args.path) :
         os.mkdir(args.path)
 
@@ -634,7 +638,13 @@ def main():
 
             pixel = pixel_coords[pin_id]
 
-            color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
+            if cameraDatum.frame is None :
+                # display black
+                color = empty_frame
+            else :
+                color = cameraDatum.frame
+
+            color = color[pixel[:, :, 0], pixel[:, :, 1], :]
 
             ### debug ###
 
