@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 import time
+import shutil
 
 import CalibrationUtilities
 import WaveUtilities
@@ -205,8 +206,10 @@ def main():
 
     args = parser.parse_args()
 
-    if not os.path.exists(args.debug_path) :
-        os.mkdir(args.debug_path)
+    if os.path.exists(args.debug_path) :
+        shutil.rmtree(args.debug_path, ignore_errors=False, onerror=None)
+
+    os.mkdir(args.debug_path)
 
     modeTotals = (1 if args.intrinsic else 0) + (1 if args.extrinsic else 0) + (1 if args.world_space else 0)
     if modeTotals != 1:
