@@ -100,9 +100,11 @@ def main():
     parser.add_argument('--intrinsics_captures', type=int, nargs='+', help='capture sequence for intrisics')
     parser.add_argument('--extrinsics_captures', type=int, nargs='+', help='capture sequence for extrinsics')
     parser.add_argument('--allowed_pins', type=int, nargs='+', help='allowed pins')
+    parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
     args = parser.parse_args()
 
-    args.allowed_pins.sort()
+    # if args.allowed
+    # args.allowed_pins.sort()
     args.intrinsics_captures.sort()
 
     # if args.list_cameras:
@@ -141,6 +143,8 @@ def main():
     num_cameras = len(cameraData)
 
     assert num_cameras >= 0
+
+    assert(len(args.flip_methods) == num_cameras)
 
     pin_ids = list(cameraData.keys())
 
@@ -196,10 +200,12 @@ def main():
     # (6): vertical-flip    - Flip vertically
     # (7): upper-left-diagonal - Flip across upper left/low
     # without this images are upside down
-    flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
 
-    for pin_id, cameraDatum in cameraData.items() :
+    for k in range(len(pin_ids)) :
+        pin_id = pin_ids[k]
+        cameraDatum = cameraData[pin_id]
+        flip_method = args.flip_methods[k]
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
