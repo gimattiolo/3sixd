@@ -1,17 +1,24 @@
-import numpy as np
 import sys
-import cv2
 import argparse
 import glob
 import os
-import CalibrationUtilities
+import math
 import subprocess
 import re
 import time
 import shutil
-import WaveUtilities
-import math
+
+os.environ["LD_PRELOAD"] = "/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0"
+
 import torch
+
+import numpy as np
+
+import cv2
+
+import CalibrationUtilities
+import WaveUtilities
+
 
 def MakeRotationMatrixX(a) :
     sinA = math.sin(a)

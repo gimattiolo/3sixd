@@ -70,7 +70,7 @@
             "name": "optimize",
             "type": "debugpy",
             "request": "launch",
-            "program": "D:/Development/gits/3sixd/optimize.py",
+            "program": "~/gits/3sixd/optimize.py",
             "console": "integratedTerminal",
             "args": [
             ]
