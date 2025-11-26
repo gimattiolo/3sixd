@@ -90,8 +90,6 @@ class CaptureDatum :
 
 def main():
     parser = argparse.ArgumentParser('Capture calibration images')
-    parser.add_argument('--listcameras', dest='list_cameras', action="store_true", help='list available cameras and their indices, and exit')
-    parser.add_argument('--cameraindices', dest='camera_indices', type=int, nargs='*', help='indices of cameras to capture from')
     #parser.add_argument('--fileindices', dest='file_indices', type=int, nargs='*', help='corresponding indices for each camera when writing file names, must be same size as --cameraindices')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
     parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
@@ -99,18 +97,24 @@ def main():
     parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
     parser.add_argument('--num_shots_per_capture', type=int, default=10, help='number of images per capture')
     parser.add_argument('--capture_delta_time_sec', type=int, default=5, help='capture delta time in seconds')
+    parser.add_argument('--intrinsics_captures', type=int, nargs='+', help='capture sequence for intrisics')
+    parser.add_argument('--extrinsics_captures', type=int, nargs='+', help='capture sequence for extrinsics')
+    parser.add_argument('--allowed_pins', type=int, nargs='+', help='allowed pins')
+    parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
     args = parser.parse_args()
 
-    if args.list_cameras:
-        # nameList = CalibrationUtilities.GetAvailableCameras()
-        nameList = []    
-        index = 0
-        for name in nameList:
-            print ('%d: %s' % (index, name))
-            index += 1
-        sys.exit(0)
+    # if args.allowed
+    # args.allowed_pins.sort()
+    args.intrinsics_captures.sort()
 
-    FORCE_SAVE = False
+    # if args.list_cameras:
+    #     # nameList = CalibrationUtilities.GetAvailableCameras()
+    #     nameList = []    
+    #     index = 0
+    #     for name in nameList:
+    #         print ('%d: %s' % (index, name))
+    #         index += 1
+    #     sys.exit(0)
 
     AUTO_SAVE = False
     #in msec
@@ -132,13 +136,15 @@ def main():
 
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = [1, 3, 5]
+    #allowed_pins = [1, 3, 5]
 
-    cameraData = ScanCameras(allowed_pins)
+    cameraData = ScanCameras(args.allowed_pins)
 
     num_cameras = len(cameraData)
 
     assert num_cameras >= 0
+
+    assert(len(args.flip_methods) == num_cameras)
 
     pin_ids = list(cameraData.keys())
 
@@ -194,10 +200,12 @@ def main():
     # (6): vertical-flip    - Flip vertically
     # (7): upper-left-diagonal - Flip across upper left/low
     # without this images are upside down
-    flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
 
-    for pin_id, cameraDatum in cameraData.items() :
+    for k in range(len(pin_ids)) :
+        pin_id = pin_ids[k]
+        cameraDatum = cameraData[pin_id]
+        flip_method = args.flip_methods[k]
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
@@ -208,7 +216,7 @@ def main():
     
     print("Analyzing previous captures...")
     running = True
-    captureIndex = -1
+    nextFileCaptureIndex = -1
     if SaveMode == 0 :
         # append
         fileList = os.listdir(calibrationPath)
@@ -224,8 +232,8 @@ def main():
             pin_id = CalibrationUtilities.GetCameraIndex(filename)
             if pin_id in pin_ids:
                 thisCaptureIndex = CalibrationUtilities.GetCaptureIndex(filename)
-                if thisCaptureIndex > captureIndex :
-                    captureIndex = thisCaptureIndex
+                if thisCaptureIndex > nextFileCaptureIndex :
+                    nextFileCaptureIndex = thisCaptureIndex
     elif SaveMode == 1 :
         # delete
         shutil.rmtree(calibrationPath, ignore_errors=False, onerror=None)
@@ -234,10 +242,12 @@ def main():
         print(f'Unsupported save mode:{SaveMode}')
         exit(1)
 
-    captureIndex += 1
-    firstCaptureIndex = captureIndex
+    nextFileCaptureIndex += 1
+    firstCaptureIndex = nextFileCaptureIndex
     
-    print(f'Appending captures starting with index {captureIndex}')
+    print(f'Appending captures starting with index {nextFileCaptureIndex}')
+
+
 
     #get size of concat
     for pin_id, cameraDatum in cameraData.items() :
@@ -273,28 +283,43 @@ def main():
 
     captureData = []
 
-    cycle = False
+    # cycle = False
+    # for i in range(num_cameras) :
+    #     # single camera for intrisics
+    #     captureDatum = CaptureDatum()
+    #     captureDatum.tuple.append(pin_ids[i])
+    #     captureData.append(captureDatum)
 
-    for i in range(num_cameras) :
+    #     # camera pairs for extrisics
+    #     captureDatum = CaptureDatum()
+
+    #     if not cycle and i == num_cameras-1 :
+    #         break 
+    #     for j in range(num_simultanous) :
+    #         captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
+    #     captureData.append(captureDatum)
+
+    for pin_id in args.intrinsics_captures :
         # single camera for intrisics
         captureDatum = CaptureDatum()
-        captureDatum.tuple.append(pin_ids[i])
+        captureDatum.tuple.append(pin_id)
         captureData.append(captureDatum)
 
-        # camera pairs for extrisics
-        captureDatum = CaptureDatum()
+    pairs = CalibrationUtilities.MakePairs(args.extrinsics_captures, pin_ids)
 
-        if not cycle and i == num_cameras-1 :
-            break 
-        for j in range(num_simultanous) :
-            captureDatum.tuple.append(pin_ids[(i + j) % num_cameras])
+    if not pairs :
+        return
+
+    for pair in pairs :
+        # single camera for intrisics
+        captureDatum = CaptureDatum()
+        captureDatum.tuple.append(pair[0])
+        captureDatum.tuple.append(pair[1])
         captureData.append(captureDatum)
 
     num_captures_expected = args.num_shots_per_capture * len(captureData)
 
     current_capture_id = 0
-
-    
 
     now = time.time()
     lastGridTime = 0
@@ -309,37 +334,54 @@ def main():
 
     window_visible = True
 
-
     captureCompleted = False
     while running :
         now = time.time()
         deltaTime = now - lastGridTime
+
+        if not captureCompleted and captureData[current_capture_id].counter == args.num_shots_per_capture :
+            current_capture_id += 1
+
+        wasCaptureCompleted = captureCompleted
+        captureCompleted = current_capture_id >= len(captureData)
+
+        if captureCompleted and not wasCaptureCompleted :
+            endCaptureTime = now
+            num_captures_actual = nextFileCaptureIndex - firstCaptureIndex
+            assert num_captures_actual == num_captures_expected, f'Captures|Actual:{num_captures_actual}|Expected:{num_captures_expected}'
+            text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
+            print(f'{text_info}')
+
         #print(deltaTime)
         detectGrid = (deltaTime > args.capture_delta_time_sec)
         if detectGrid :
             lastGridTime = now
 
+        for pin_id, cameraDatum in cameraData.items() :
+            cameraDatum.foundGrid = False
+
         camerasOK = True
         foundGridInAllViews = detectGrid and not captureCompleted
         for pin_id, cameraDatum in cameraData.items() :
-            cameraDatum.foundGrid = False
-            if cameraDatum.capture.isOpened() :
-                # Capture frame-by-frame
-                ret, cameraDatum.frame = cameraDatum.capture.read()
+            text_pin = f'Pin{pin_id}'
+            if not captureCompleted :
+                pin_in_process = pin_id in captureData[current_capture_id].tuple
 
-                if not ret :
-                    print(f'{pin_id} not reading frames')
+                if not pin_in_process :
                     continue
 
-                cameraDatum.decoratedFrame = cameraDatum.frame.copy()
+                if cameraDatum.capture.isOpened() :
+                    # Capture frame-by-frame
+                    ret, cameraDatum.frame = cameraDatum.capture.read()
 
-                text_pin = f'Pin{pin_id}'
+                    if not ret :
+                        print(f'{pin_id} not reading frames')
+                        continue
 
-                if not captureCompleted :
-                    pin_in_process = pin_id in captureData[current_capture_id].tuple
-                    if pin_in_process :
-                        text_pin += f'#'
-                    if detectGrid and pin_in_process :
+                    cameraDatum.decoratedFrame = cameraDatum.frame.copy()
+
+                    text_pin += f'#'
+                    if detectGrid :
                     
                         gray = cv2.cvtColor(cameraDatum.decoratedFrame, cv2.COLOR_BGR2GRAY)
                         cameraDatum.foundGrid, corners = cv2.findChessboardCorners(gray, patternSize, None)
@@ -372,40 +414,31 @@ def main():
             print('Unable to open all the required cameras')
             continue
 
-        if foundGridInAllViews :
-            captureData[current_capture_id].counter += 1
-            if captureData[current_capture_id].counter >= args.num_shots_per_capture :
-                current_capture_id += 1
-                captureCompleted = current_capture_id >= len(captureData)
-                if captureCompleted :
-                    endCaptureTime = now
-                    assert (captureIndex - firstCaptureIndex + 1) == num_captures_expected, f'Captures|Actual:{num_captures}|Expected:{num_captures_expected}'
-                    text_info = f'{num_captures_expected} captures in {endCaptureTime - startCaptureTime:,.3f}sec'
 
         key = cv2.waitKey(waitKeyPeriod)
         # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
         if AUTO_SAVE or key == ord('s'):
         
-            camerasSeeingGrid = []
-            for pin_id, cameraDatum in cameraData.items() :
-                if cameraDatum.foundGrid :
-                    camerasSeeingGrid.append(pin_id)
-
-            if FORCE_SAVE or len(camerasSeeingGrid) > 0 :
-                for pin_id in camerasSeeingGrid :
+            if foundGridInAllViews :
+                msg = f'Saved '
+                for pin_id in captureData[current_capture_id].tuple :
                     cameraDatum = cameraData[pin_id]
                     
-                    # the filename is {captureIndex}_{fileCameraIndex}.ext
-                    filename = os.path.join(calibrationPath, CalibrationUtilities.GetCaptureName(captureIndex, pin_id, ext))
-                    print("Saving image " + filename)
-                    cv2.imwrite(filename, cameraDatum.frame)
-                captureIndex += 1
+                    # the filename is {nextFileCaptureIndex}_{fileCameraIndex}.ext
+                    filename = CalibrationUtilities.GetCaptureName(nextFileCaptureIndex, pin_id, ext)
+                    filepath = os.path.join(calibrationPath, filename)
+                    msg += f'{filename},'
+
+                    cv2.imwrite(filepath, cameraDatum.frame)
+                print(f'{msg} | {captureData[current_capture_id].tuple} | {current_capture_id=} | {captureData[current_capture_id].counter}')
+
+                nextFileCaptureIndex += 1
+
+                captureData[current_capture_id].counter += 1
+
             else :
                 pass
                 #print("Checkerboard not visible in enough images! Skipping save")
-
-            for pin_id, cameraDatum in cameraData.items() :
-                cameraDatum.foundGrid = False
 
         if key == ord('q') :#or not window_visible:
             running = False

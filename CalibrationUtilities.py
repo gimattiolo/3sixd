@@ -284,9 +284,12 @@ def make_gstreamer_pipeline(
 
 def MakePairs(input_pairs, pin_ids) :
     pairs = []
+    
+    num_pairs = len(input_pairs)
 
-    for i in range(0, len(input_pairs), 2) :
-        pairs.append((input_pairs[i], input_pairs[i+1]))
+    for i in range(num_pairs) :
+        j = (i+1) % num_pairs
+        pairs.append((input_pairs[i], input_pairs[j]))
 
     # check pairs
     for c0, c1 in pairs :
@@ -311,3 +314,17 @@ def MakePairs(input_pairs, pin_ids) :
             pair_dict[pair] = None
 
     return pairs
+
+def invertExtrisics(M) :
+    
+    invM = numpy.eye(4, dtype=numpy.float32)
+
+    R = M[0:3,0:3]
+    t = M[0:3,3:]
+    invR = numpy.transpose(R)
+    invT = numpy.dot(invR, -t) 
+    invM[0:3,0:3] = invR
+    invM[0:3,3:] = invT
+
+    return invM
+

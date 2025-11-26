@@ -8,11 +8,15 @@
             "program": "~/gits/3sixd/cameraCalibrationCapture.py",
             "console": "integratedTerminal",
             "args": [
-                "--path", "~/gits/3sixd/calibration_data_test",
+                "--path", "~/gits/3sixd/calibration_data3",
                 "--auto", "1",
                 "--save_mode", "0",
-                "--num_shots_per_capture", "10",
-                "--capture_delta_time_sec", "5",
+                "--num_shots_per_capture", "20",
+                "--capture_delta_time_sec", "1",
+                //"--allowed_pins", "1", "3", "5",
+                "--intrinsics_captures", "0", "1", "2", "3", "4", "5",
+                "--extrinsics_captures", "0", "2", "4", "1", "3", "5", "0",
+                "--flip_methods", "0", "2", "2", "2", "2", "2",
             ]
         },
         {
@@ -42,8 +46,8 @@
             "args": [
                 "--file_indices", "1", "3", "5",
                 "--pairs", "1", "3", "3", "5",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data2",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data2",
                 //"--intrinsic",
                 "--extrinsic",
                 
@@ -56,9 +60,9 @@
             "program": "~/gits/3sixd/panorama.py",
             "console": "integratedTerminal",
             "args": [
-                "--path", "~/gits/3sixd/calibration_data_test",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data",
+                "--path", "~/gits/3sixd/panorama_out",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data2",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data2",
                 "--pairs", "1", "3", "3", "5",
             ]
         },

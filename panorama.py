@@ -12,6 +12,8 @@ import shutil
 import WaveUtilities
 import math
 
+#import torch
+
 two_pi = 2 * math.pi
 
 class CameraDatum :
@@ -209,17 +211,17 @@ def MakeUV(shape) :
     return np.stack((i_u, i_v), axis=2)
 
 #each Ms[ci] is the transform from ci to c0
-def ComputeWorldToC0(Ms) :
+def ComputeWorldToC0(Ms_ci_c0) :
 
-    num_cameras = len(Ms)
+    num_cameras = len(Ms_ci_c0)
 
     Ps = [None] * num_cameras
     Vs = [None] * num_cameras
 
     eye = np.eye(4, dtype=np.float32)
     for i in range(num_cameras) :
-        Vs[i] = np.dot(Ms[i], eye[:, 2:3])[0:3]
-        Ps[i] = np.dot(Ms[i], eye[:, 3:])[0:3]
+        Vs[i] = np.dot(Ms_ci_c0[i], eye[:, 2:3])[0:3]
+        Ps[i] = np.dot(Ms_ci_c0[i], eye[:, 3:])[0:3]
 
     A = np.zeros((3 * num_cameras, num_cameras), dtype=np.float32)
     b = np.zeros((3 * num_cameras, 1), dtype=np.float32)
@@ -230,11 +232,11 @@ def ComputeWorldToC0(Ms) :
         A[r:r+3, i:i+1] = Vs[i]; 
         A[r:r+3, j:j+1] = -Vs[j]
 
-        b[r:r+3, :] = Ps[j] - Ps[0]  
+        b[r:r+3, :] = Ps[j] - Ps[i]  
 
     # num_cameras,1
     # in c0 reference framework
-    x = np.linalg.lstsq(A, b, rcond=None)
+    x, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
 
     x0 = np.zeros((3, 1), dtype=np.float32)
 
@@ -243,7 +245,7 @@ def ComputeWorldToC0(Ms) :
         x0 += p
     x0 /= num_cameras
 
-    # return c0 -> w
+    # return w -> c0
     eye[0:3, 3:] = x0
     return eye
 
@@ -287,6 +289,10 @@ def main():
 
     size_default = (H,W) 
 
+    empty_frame = np.zeros((H, W, 3), dtype=np.float32)
+
+    empty_frame[:, :, 2] = 255.0 
+
     if not os.path.exists(args.path) :
         os.mkdir(args.path)
 
@@ -295,6 +301,9 @@ def main():
         sys.exit(1)
 
     pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)        
+
+    if not pairs :
+        return
 
     print("Creating capture objects...")
 
@@ -392,9 +401,8 @@ def main():
     first_pin_id = pin_ids[0]
 
     ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
-    ProjectionMatrices[(first_pin_id, first_pin_id)] = np.dot(cameraData[first_pin_id].IntrinsicMatrix, np.block([ [ np.identity(3, dtype=np.float32), np.zeros((3, 1), dtype=np.float32) ] ]))
 
-    # load extrinsic
+    # load extrinsics
     for c0, c1 in pairs :
         key = (c0, c1)
         invKey = (c1, c0)
@@ -414,7 +422,7 @@ def main():
             [ R, T ],
         ] )
 
-        invR = np.linalg.inv(R)
+        invR = np.transpose(R)
         #invT = -inverse(R) * T
         invT = -np.dot(invR, T) 
 
@@ -475,38 +483,35 @@ def main():
         print('Unable to load stereo calibrations')
         sys.exit(1)
 
-    # store projection matrices from c0 -> c
-    Ms = [None] * num_cameras
+    # store matrices from c0 -> ci
+    Ms_c0_ci = [None] * num_cameras
+    Ms_ci_c0 = [None] * num_cameras
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
 
         cameraDatum = cameraData[pin_id]
 
-        # from c0 -> c
-        E_0_c_4x4 = np.identity(4)
+        # from c0 -> ci
+        Ms_c0_ci[k0] = np.identity(4)
         
         for i in range(0, k0) :
             key = (pin_ids[i], pin_ids[i + 1])
-            E_0_c_4x4 = np.dot(ExtrinsicMatrices[key], E_0_c_4x4)
+            Ms_c0_ci[k0] = np.dot(ExtrinsicMatrices[key], Ms_c0_ci[k0])
         
-        Ms[k0] = E_0_c_4x4
+        Ms_ci_c0[k0] = CalibrationUtilities.invertExtrisics(Ms_c0_ci[k0])
 
-    M_world_c0 = ComputeWorldToC0(Ms)
+    M_w_c0 = ComputeWorldToC0(Ms_ci_c0)
 
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
 
         cameraDatum = cameraData[pin_id]
 
-        key = (first_pin_id, pin_id)
-        
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
-        E_0_c_4x4
-
-        #world - > c
-        E_w_c_4x4 = np.dot(Ms[k0], M_world_c0)
-        ProjectionMatrices[key] = np.dot(cameraDatum.IntrinsicMatrix, E_w_c_4x4[0:3, :])
+        #world - > ci
+        E_w_ci_4x4 = np.dot(Ms_c0_ci[k0], M_w_c0)
+        ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
     print("Running...")
 
@@ -557,7 +562,7 @@ def main():
         # image y is from top to bottom
         # z is forward
         # right handed
-        ps = np.dot(ProjectionMatrices[(first_pin_id, pin_id)][:, 0:3], ray_inW)
+        ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
         ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
         ps = np.reshape(ps[0:2, :], (2, H, W))
         #2,H,W -> H,W,2
@@ -591,6 +596,8 @@ def main():
 
     ray_inW = np.reshape(ray_inW, (3, H, W))
     ray_inW = np.transpose(ray_inW, (1, 2, 0))
+
+    output_id = 0
 
     while running :
         now = time.time()
@@ -633,7 +640,13 @@ def main():
 
             pixel = pixel_coords[pin_id]
 
-            color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
+            if cameraDatum.frame is None :
+                # display empty frame
+                color = empty_frame
+            else :
+                color = cameraDatum.frame
+
+            color = color[pixel[:, :, 0], pixel[:, :, 1], :]
 
             ### debug ###
 
@@ -651,6 +664,15 @@ def main():
         panorama[:,:,1] *= accumulation_normalization
         panorama[:,:,2] *= accumulation_normalization
 
+        # save screenshot
+        if key == ord('s') :
+            filename = os.path.join(args.path, f'panorama_{output_id}.png')
+            if cv2.imwrite(filename=filename, img=panorama) :
+                print(f'Screenshot saved:{filename}')
+                output_id += 1
+            else : 
+                print(f'Unable to save screenshot:{filename}')
+ 
         cv2.imshow(window_name, panorama.astype(np.uint8))
 
     # When everything done, release the captures
