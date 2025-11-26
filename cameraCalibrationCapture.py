@@ -248,12 +248,12 @@ def main():
     print(f'Appending captures starting with index {nextFileCaptureIndex}')
 
 
-
+    num_attempts =100
     #get size of concat
     for pin_id, cameraDatum in cameraData.items() :
         if cameraDatum.capture.isOpened() :
             counter = 0
-            while counter < 3 :
+            while counter < num_attempts :
                 counter += 1
                 ret, cameraDatum.frame = cameraDatum.capture.read()
                 if not ret :
@@ -268,7 +268,7 @@ def main():
                 else :
                     cameraDatum.scale = size_default[1] / cameraDatum.size[1]
                 break            
-            if counter >= 3 :
+            if counter >= num_attempts :
                 print(f'{pin_id} not reading frames')
                 exit(1)
 
@@ -430,8 +430,8 @@ def main():
                     filepath = os.path.join(calibrationPath, filename)
                     msg += f'{filename},'
 
-                    if not cv2.imwrite(filepath, cameraDatum.frame) :
-                        print(f'Unable to save frame to {filepath}')
+                    if not cameraDatum.frame is None and not cv2.imwrite(filepath, cameraDatum.frame) :
+                            print(f'Unable to save frame to {filepath}')
                 print(f'{msg} | {captureData[current_capture_id].tuple} | {current_capture_id=} | {captureData[current_capture_id].counter}')
 
                 nextFileCaptureIndex += 1
