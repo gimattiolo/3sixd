@@ -211,7 +211,7 @@ def MakeUV(shape) :
     return np.stack((i_u, i_v), axis=2)
 
 #each Ms[ci] is the transform from ci to c0
-def ComputeWorldToC0(Ms_ci_c0) :
+def ComputeWorldToC0(Ms_ci_c0, pin_ids) :
 
     num_cameras = len(Ms_ci_c0)
 
@@ -220,8 +220,10 @@ def ComputeWorldToC0(Ms_ci_c0) :
 
     eye = np.eye(4, dtype=np.float32)
     for i in range(num_cameras) :
-        Vs[i] = np.dot(Ms_ci_c0[i], eye[:, 2:3])[0:3]
-        Ps[i] = np.dot(Ms_ci_c0[i], eye[:, 3:])[0:3]
+        pin_id = pin_ids[i]
+
+        Vs[i] = np.dot(Ms_ci_c0[pin_id], eye[:, 2:3])[0:3]
+        Ps[i] = np.dot(Ms_ci_c0[pin_id], eye[:, 3:])[0:3]
 
     A = np.zeros((3 * num_cameras, num_cameras), dtype=np.float32)
     b = np.zeros((3 * num_cameras, 1), dtype=np.float32)
@@ -275,12 +277,12 @@ def main():
     parser.add_argument('--extrinsic_path', type=str, help='set the extrinsic image capture source folder/data export folder')
     parser.add_argument('--world_space_path', type=str, default='', help='set the world space capture source folder/data export folder')
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
-
+    parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
     
     args = parser.parse_args()
 
     #in msec
-    waitKeyPeriod = 1
+    waitKeyPeriod = 16
         
     SaveMode = args.save_mode
     
@@ -293,6 +295,8 @@ def main():
     num_cameras = len(cameraData)
 
     assert num_cameras >= 0
+
+    assert(len(args.flip_methods) == num_cameras)
 
     pin_ids = list(cameraData.keys())
 
@@ -319,9 +323,18 @@ def main():
         print("Invalid path " + args.path)
         sys.exit(1)
 
-    pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)        
+    pair_list = CalibrationUtilities.MakePairs(args.pairs, pin_ids)        
 
-    if not pairs :
+    # pairsPerFirst = {}
+    # pairsPerSecond = {}
+    # for i, e in enumerate(pair_list) :
+    #     first, second = e
+    #     assert first not in pairsPerFirst
+    #     pairsPerFirst[first] = i
+    #     assert second not in pairsPerSecond
+    #     pairsPerSecond[second] = i
+
+    if not pair_list :
         return
 
     print("Creating capture objects...")
@@ -338,8 +351,10 @@ def main():
     flip_method = 2
     api_preference=cv2.CAP_GSTREAMER
 
-    for pin_id, cameraDatum in cameraData.items() :
-        pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
+    for k in range(len(pin_ids)) :
+        pin_id = pin_ids[k]
+        cameraDatum = cameraData[pin_id]
+        pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=args.flip_methods[k])
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
@@ -422,7 +437,7 @@ def main():
     ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
 
     # load extrinsics
-    for c0, c1 in pairs :
+    for c0, c1 in pair_list :
         key = (c0, c1)
         invKey = (c1, c0)
 
@@ -503,23 +518,31 @@ def main():
         sys.exit(1)
 
     # store matrices from c0 -> ci
-    Ms_c0_ci = [None] * num_cameras
-    Ms_ci_c0 = [None] * num_cameras
-    for k0 in range(num_cameras) :
-        pin_id = pin_ids[k0]
+    Ms_c0_ci = {}
+    Ms_ci_c0 = {}
 
-        cameraDatum = cameraData[pin_id]
+    # from c0 -> ci
+    M = np.identity(4)
 
-        # from c0 -> ci
-        Ms_c0_ci[k0] = np.identity(4)
-        
-        for i in range(0, k0) :
-            key = pairs[i]
-            Ms_c0_ci[k0] = np.dot(ExtrinsicMatrices[key], Ms_c0_ci[k0])
-        
-        Ms_ci_c0[k0] = CalibrationUtilities.invertExtrisics(Ms_c0_ci[k0])
+    for k0 in range(len(args.pairs)-1) :
 
-    M_w_c0 = ComputeWorldToC0(Ms_ci_c0)
+        first = args.pairs[k0]
+
+        Ms_c0_ci[first] = M.copy()
+        Ms_ci_c0[first] = CalibrationUtilities.invertExtrisics(M)
+
+        second = args.pairs[k0+1]
+
+        M = np.dot(ExtrinsicMatrices[(first, second)], M)
+
+    last_pin_id = args.pairs[-1]
+    cyclical = args.pairs == args.pairs[-1]
+
+    if not cyclical :
+        Ms_c0_ci[last_pin_id] = M.copy()
+        Ms_ci_c0[last_pin_id] = CalibrationUtilities.invertExtrisics(M)
+
+    M_w_c0 = ComputeWorldToC0(Ms_ci_c0, pin_ids)
 
     for k0 in range(num_cameras) :
         pin_id = pin_ids[k0]
@@ -529,7 +552,7 @@ def main():
         # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
         
         #world - > ci
-        E_w_ci_4x4 = np.dot(Ms_c0_ci[k0], M_w_c0)
+        E_w_ci_4x4 = np.dot(Ms_c0_ci[pin_id], M_w_c0)
         ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
     print("Running...")
