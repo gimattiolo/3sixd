@@ -285,7 +285,7 @@ def main():
     sideLength = CalibrationUtilities.GetCalibrationPatternSquareSideLengthInMeters()
     if args.pattern_side_length > 0.0:
         sideLength = args.pattern_side_length
-    S = np.array( [ sideLength ] )
+    patternSideLength = np.array( [ sideLength ] )
 
     if args.intrinsic: 
     
@@ -416,13 +416,13 @@ def main():
 
             objectPointsArray = np.array(imageObjectPoints)
             
-            objectPointsArray *= S
+            objectPointsArray *= patternSideLength
             
             print(f'Calibrating stereo pair {c0} {c1}')
             
             error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], sizesPerCamera[c0][0]) 
             
-            jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, S)
+            jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, patternSideLength)
             filename = os.path.join(extrinsicPath, f'stereoCalibration{c0}_{c1}.json')
             SaveJsonContent(jsonContent, filename)
     elif args.world_space:
@@ -480,14 +480,14 @@ def main():
 
             objectPointsArray = np.array(imageObjectPoints)
             
-            objectPointsArray *= S
+            objectPointsArray *= patternSideLength
 
             success, Rvec, T, _ = cv2.solvePnPRansac(objectPointsArray[0], imagePoints[c0][0], intrinsicMatrices[c0], distortions[c0])
             # convert rot vector to rot matrix
             R, _ = cv2.Rodrigues(Rvec)
 
             if success:
-                jsonContent = CalibrationUtilities.WorldSpaceCalibrationToJson(intrinsicMatrices[c0], distortions[c0], R, T, S)
+                jsonContent = CalibrationUtilities.WorldSpaceCalibrationToJson(intrinsicMatrices[c0], distortions[c0], R, T, patternSideLength)
                 filename = os.path.join(worldSpacePath, 'worldSpaceCalibration' + str(fileIndices[c0]) + '.json')
                 SaveJsonContent(jsonContent, filename)
             else:

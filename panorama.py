@@ -267,8 +267,8 @@ def main():
     SaveMode = args.save_mode
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = [1, 3, 5]
-
+    #allowed_pins = [1, 3, 5]
+    allowed_pins = None
     cameraData = ScanCameras(allowed_pins)
 
     num_cameras = len(cameraData)
@@ -494,8 +494,7 @@ def main():
         # from c0 -> ci
         Ms_c0_ci[k0] = np.identity(4)
         
-        for i in range(0, k0) :
-            key = (pin_ids[i], pin_ids[i + 1])
+        for key in pairs :
             Ms_c0_ci[k0] = np.dot(ExtrinsicMatrices[key], Ms_c0_ci[k0])
         
         Ms_ci_c0[k0] = CalibrationUtilities.invertExtrisics(Ms_c0_ci[k0])
@@ -610,7 +609,7 @@ def main():
 
                 if not ret :
                     print(f'{pin_id} not reading frames')
-                    cameraDatum.frame = empty_frame
+                    cameraDatum.frame = empty_frame.copy()
 
             else :
                 camerasOK = False

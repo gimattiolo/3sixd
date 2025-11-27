@@ -94,7 +94,7 @@ def main():
     parser.add_argument('--path', type=str, help='set the capture destination folder')
     parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
     parser.add_argument('--auto', metavar='MS', default=-1, type=int, help='autocapture images, delayed by MS milliseconds')
-    parser.add_argument('--patternsize', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
+    parser.add_argument('--pattern_size', dest='pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
     parser.add_argument('--num_shots_per_capture', type=int, default=10, help='number of images per capture')
     parser.add_argument('--capture_delta_time_sec', type=int, default=5, help='capture delta time in seconds')
     parser.add_argument('--intrinsics_captures', type=int, nargs='+', help='capture sequence for intrisics')
@@ -118,7 +118,7 @@ def main():
 
     AUTO_SAVE = False
     #in msec
-    waitKeyPeriod = 1
+    waitKeyPeriod = 16
     if args.auto >= 0:
         AUTO_SAVE = True
         #waitKeyPeriod = args.auto
@@ -176,8 +176,12 @@ def main():
     ext = '.png'
 
     # width, height
-    size_default = (1920, 1080)
-    #size_default = (400, 400)
+    H, W = (1080, 1920)
+    #H, W = (400, 400)
+
+    size_default = (W,H) 
+
+    empty_frame = np.zeros((H, W, 3), dtype=np.float32)
 
     if not os.path.exists(calibrationPath) :
         os.mkdir(calibrationPath)
@@ -207,8 +211,9 @@ def main():
         cameraDatum = cameraData[pin_id]
         flip_method = args.flip_methods[k]
         pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=flip_method)
+        print(f'Opening camera Pin{pin_id}')
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
-        print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
+        print(f'Sensor:{cameraDatum.sensor_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
     for i in range(NUM_VIEWS) :
         concatFrames[i] = np.zeros((size_default[1], size_default[0], 3), np.uint8)
@@ -370,7 +375,7 @@ def main():
 
                 if not ret :
                     print(f'{pin_id} not reading frames')
-                    continue
+                    cameraDatum.frame = empty_frame.copy()
 
                 cameraDatum.decoratedFrame = cameraDatum.frame.copy()
 
@@ -469,8 +474,7 @@ def main():
             
             scaledSize = ( (int)(cameraDatum.scale * cameraDatum.size[0]), (int)(cameraDatum.scale * cameraDatum.size[1]))
             scaledFrame = cv2.resize(cameraDatum.decoratedFrame, (scaledSize[0], scaledSize[1]))
-            if not cameraDatum.decoratedFrame is None :
-                concatFrames[frame_id][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
+            concatFrames[frame_id][ offset[1] : offset[1] + scaledSize[1], offset[0] : offset[0] + scaledSize[0] ] = scaledFrame
             frame_id += 1
             if frame_id >= NUM_VIEWS :
                 break
@@ -480,7 +484,6 @@ def main():
         if not captureCompleted :
             text_info = f'{args.capture_delta_time_sec - deltaTime:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_shots_per_capture}|{current_capture_id}/{len(captureData)}'
 
-        # if not captureCompleted :
         cv2.putText(windowFrame, 
             text_info, 
             org=(0,400), 
