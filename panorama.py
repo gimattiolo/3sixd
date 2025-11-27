@@ -205,8 +205,8 @@ def MakeUV(shape) :
     i_u = np.fromfunction(create_array_element_u, shape, dtype=np.float32)
     i_v = np.fromfunction(create_array_element_v, shape, dtype=np.float32)
 
-    print(f'{i_u.min()}|{i_u.max()}')
-    print(f'{i_v.min()}|{i_v.max()}')
+    # print(f'{i_u.min()}|{i_u.max()}')
+    # print(f'{i_v.min()}|{i_v.max()}')
 
     return np.stack((i_u, i_v), axis=2)
 
@@ -632,7 +632,7 @@ def main():
         conditions[pin_id] = condition.astype(np.float32)
         pixel_coords[pin_id] = pixel
 
-    print(f'{num_acculations.min()}|{num_acculations.max()}')
+    #print(f'{num_acculations.min()}|{num_acculations.max()}')
 
     accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
 
