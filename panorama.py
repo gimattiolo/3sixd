@@ -249,6 +249,24 @@ def ComputeWorldToC0(Ms_ci_c0) :
     eye[0:3, 3:] = x0
     return eye
 
+def GetAllowedPins(pairs) :
+        # allowed_pins = [1,2,3,4,5]
+    allowed_pins = pairs.copy()
+    
+    # remove duplicates
+    pin_ids = {}
+    indices = []
+    for e in allowed_pins :
+        if e not in pin_ids :
+            pin_ids[e] = None
+            continue
+        indices.append(e)
+    for e in indices :
+        allowed_pins.remove(e)        
+
+    allowed_pins = sorted(allowed_pins)        
+    return allowed_pins
+
 def main():
     parser = argparse.ArgumentParser('Panorama')
     parser.add_argument('--path', type=str, help='set the capture destination folder')
@@ -267,7 +285,7 @@ def main():
     SaveMode = args.save_mode
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = [1, 3, 5]
+    allowed_pins = GetAllowedPins(args.pairs)
     
     #allowed_pins = None
     cameraData = ScanCameras(allowed_pins)
