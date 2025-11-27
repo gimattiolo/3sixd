@@ -514,7 +514,7 @@ def main():
         Ms_c0_ci[k0] = np.identity(4)
         
         for i in range(0, k0) :
-            key = (pin_ids[i], pin_ids[i + 1])
+            key = pairs[i]
             Ms_c0_ci[k0] = np.dot(ExtrinsicMatrices[key], Ms_c0_ci[k0])
         
         Ms_ci_c0[k0] = CalibrationUtilities.invertExtrisics(Ms_c0_ci[k0])
