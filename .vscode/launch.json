@@ -17,6 +17,7 @@
                 "--intrinsics_captures", "0", "1", "2", "3", "4", "5",
                 "--extrinsics_captures", "0", "2", "4", "1", "3", "5", "0",
                 "--flip_methods", "0", "2", "2", "2", "2", "2",
+                "--pattern_size", "9", "6"
             ]
         },
         {
@@ -44,13 +45,15 @@
             "program": "~/gits/3sixd/cameraCalibration.py",
             "console": "integratedTerminal",
             "args": [
-                "--file_indices", "1", "3", "5",
+                "--file_indices", "0", "1", "2", "3", "4", "5",
                 // to make the pairs cyclical explicitely re-add first camera pin
-                "--pairs", "1", "3", "5",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data2",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data2",
+                "--pairs", "0", "2", "4", "1", "3", "5", "0",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data3",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--debug_path", "~/gits/3sixd/temp",
-                "--use_intrinsics_guess",                
+                "--use_intrinsics_guess",
+                "--pattern_size", "9", "6",        
+                "--pattern_side_length", "1",        
                 //"--intrinsic",
                 "--extrinsic",
                 
@@ -64,9 +67,10 @@
             "console": "integratedTerminal",
             "args": [
                 "--path", "~/gits/3sixd/panorama_out",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data2",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data2",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data3",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data3",
                 // to make the pairs cyclical explicitely re-add first camera pin
+                //"--pairs", "0", "2", "4", "1", "3", "5", "0",
                 "--pairs", "1", "3", "5",
             ]
         },
