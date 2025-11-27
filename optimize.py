@@ -74,6 +74,43 @@ def MakeRotationMatrix(a,b,c) :
 
     return R
 
+# q is [v, s], s + vx * i + vy * j + vz * k, [u * sin(theta/2), cos(theta/2)]
+def quaternion_multiplication(q1, q2) :
+    # [s1v2 + s2v1 + v1 × v2, s1s2 − v1 · v2]
+    v1 = q1.xyz
+    v2 = q2.xyz
+    q = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    q.xyz = q1.w * v2 + q2.w * v1 + np.cross(v1, v2)
+    q.w = q1.w * q2.w - np.dot(v1, v2)
+    return q
+
+def quaternion_to_matrix(q) :
+    s = q.w
+    v = q.xyz
+
+    # 1.0, 0.0, 0.0, # first row (not column as in GLSL!)
+    # 0.0, 1.0, 0.0, # second row
+    # 0.0, 0.0, 1.0  # third row
+    M = np.eye(3, dtype=np.float32)
+
+    M[0][0] = 1.0 - 2.0 * (v.y * v.y - v.z * v.z)
+    M[0][1] = 2.0 * (v.x * v.y  - s * v.z)
+    M[0][2] = 2.0 * (v.x * v.z - s * v.y)
+
+    M[1][1] = 1.0 - 2.0 * (v.x * v.x - v.z * v.z)
+    M[1][2] = 2.0 * (v.y * v.z - s * v.x)
+
+    M[2][2] = 1.0 - 2.0 * (v.x * v.x - v.y * v.y)
+
+    # because of symmetry
+    M[1][0] = M[0][1]
+    M[2][0] = M[0][2]
+    M[2][1] = M[1][2]
+
+    return M
+
+
+
 class OptimizableTransform(torch.nn.Module):
     def __init__(self, angles, translation):
         super().__init__()
