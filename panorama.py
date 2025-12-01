@@ -1,16 +1,17 @@
-import numpy as np
 import sys
-import cv2
 import argparse
-import glob
 import os
-import CalibrationUtilities
 import subprocess
 import re
 import time
 import shutil
-import WaveUtilities
 import math
+
+import numpy as np
+import cv2
+
+import WaveUtilities
+import CalibrationUtilities
 
 #import torch
 
@@ -402,7 +403,6 @@ def main():
     pixelSize_m = 1.0
     scale = 0.1    
 
-
     cameraCalibrationOK = True
 
     for k0 in range(0, num_cameras) :
@@ -556,7 +556,6 @@ def main():
         ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
     print("Running...")
-
 
     window_visible = True
 
