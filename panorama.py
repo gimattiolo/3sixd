@@ -296,6 +296,8 @@ def main():
 
     assert(len(args.pairs) == len(args.flip_methods))
 
+    cyclical = args.pairs[0] == args.pairs[-1]
+
     #in msec
     waitKeyPeriod = 16
         
@@ -550,7 +552,6 @@ def main():
         M = np.dot(ExtrinsicMatrices[(first, second)], M)
 
     last_pin_id = args.pairs[-1]
-    cyclical = args.pairs == args.pairs[-1]
 
     if not cyclical :
         Ms_c0_ci[last_pin_id] = M.copy()
