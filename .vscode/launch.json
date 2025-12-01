@@ -72,10 +72,10 @@
 
                 // to make the pairs cyclical explicitely re-add first camera pin
                 //"--pairs", "0", "2", "4", "1", "3", "5", "0",
-                "--pairs", "1", "3", "5",
+                "--pairs", "1", "3", "5", "0",
                 // "--pairs", "5", "0",
                 // "--flip_methods", "0", "2", "2", "2", "2", "2",
-                "--flip_methods", "2", "2", "2"
+                "--flip_methods", "2", "2", "2", "0",
             ]
         },
         {

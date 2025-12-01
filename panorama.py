@@ -46,7 +46,7 @@ class CameraDatum :
     def __repr__(self) :
         return f'{self.pin_id}|{self.identifier}||{self.sensor_id}|{self.file}'
 
-def ScanCameras(allowed_pins) :
+def ScanCameras(pin_data) :
     subprocess_out = subprocess.check_output(["v4l2-ctl", "--list-devices"]) 
     subprocess_out_str = str(subprocess_out)
 
@@ -81,10 +81,10 @@ def ScanCameras(allowed_pins) :
     sorted_items = sorted(cameraData.items())
     cameraData = dict(sorted_items)
 
-    if allowed_pins :
+    if pin_data :
         pins = list(cameraData.keys())
         for pin in pins :
-            if pin not in allowed_pins :
+            if pin not in pin_data :
                 del cameraData[pin]
 
     return cameraData
@@ -252,23 +252,34 @@ def ComputeWorldToC0(Ms_ci_c0, pin_ids) :
     eye[0:3, 3:] = x0
     return eye
 
-def GetAllowedPins(pairs) :
-        # allowed_pins = [1,2,3,4,5]
-    allowed_pins = pairs.copy()
-    
-    # remove duplicates
-    pin_ids = {}
-    indices = []
-    for e in allowed_pins :
-        if e not in pin_ids :
-            pin_ids[e] = None
-            continue
-        indices.append(e)
-    for e in indices :
-        allowed_pins.remove(e)        
+class PinDatum :
+    def reset(self) :
+            self.pin_id = -1
+            self.flip = 2
 
-    allowed_pins = sorted(allowed_pins)        
-    return allowed_pins
+    def __init__(self) :
+        self.reset()    
+
+# this method finds out the pins and the related info
+
+def GetPinsData(pairs_list, flip_methods_list) :
+        # allowed_pins = [1,2,3,4,5]
+    pin_data = {}
+    for i in range(len(pairs_list)) :
+        e = pairs_list[i]
+        f = flip_methods_list[i]
+        if e not in pin_data :
+            datum = PinDatum()
+            datum.pin_id = e
+            datum.flip = f
+            pin_data[e] = datum
+            continue
+
+    # sort the entries by pin
+    sorted_items = sorted(pin_data.items())
+    pin_data = dict(sorted_items)
+
+    return pin_data
 
 def main():
     parser = argparse.ArgumentParser('Panorama')
@@ -282,22 +293,22 @@ def main():
     
     args = parser.parse_args()
 
+    assert(len(args.pairs) == len(args.flip_methods))
+
     #in msec
     waitKeyPeriod = 16
         
     SaveMode = args.save_mode
     
     # allowed_pins = [1,2,3,4,5]
-    allowed_pins = GetAllowedPins(args.pairs)
+    pin_data = GetPinsData(args.pairs, args.flip_methods)
     
     #allowed_pins = None
-    cameraData = ScanCameras(allowed_pins)
+    cameraData = ScanCameras(pin_data)
 
     num_cameras = len(cameraData)
 
     assert num_cameras >= 0
-
-    assert(len(args.flip_methods) == num_cameras)
 
     pin_ids = list(cameraData.keys())
 
@@ -355,7 +366,9 @@ def main():
     for k in range(len(pin_ids)) :
         pin_id = pin_ids[k]
         cameraDatum = cameraData[pin_id]
-        pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=args.flip_methods[k])
+        pinDatum = pin_data[pin_id]
+
+        pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
         cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
         print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
     # create views in the window
