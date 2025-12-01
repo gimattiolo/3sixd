@@ -290,7 +290,8 @@ def main():
     parser.add_argument('--world_space_path', type=str, default='', help='set the world space capture source folder/data export folder')
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
     parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
-    
+    parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
+        
     args = parser.parse_args()
 
     assert(len(args.pairs) == len(args.flip_methods))
@@ -653,6 +654,13 @@ def main():
 
     output_id = 0
 
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    origin = (800,500)
+    fontScale              = 5
+    fontColor              = (255,0,0) # red in BGR
+    thickness              = 10
+    lineType               = cv2.LINE_8
+
     while running :
         now = time.time()
 
@@ -665,6 +673,17 @@ def main():
                 if not ret :
                     print(f'{pin_id} not reading frames')
                     cameraDatum.frame = empty_frame.copy()
+
+                if args.show_pin :
+                    cv2.putText(cameraDatum.frame, 
+                        f"Pin{pin_id}", 
+                        origin, 
+                        font, 
+                        fontScale,
+                        fontColor,
+                        thickness,
+                        lineType,
+                        bottomLeftOrigin=False)
 
             else :
                 camerasOK = False
