@@ -14,9 +14,9 @@ import queue
 #import torch
 
 import cupy as cp
-
 import numpy as np
 import cv2
+import ffmpeg
 
 import WaveUtilities
 import CalibrationUtilities
@@ -289,7 +289,7 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
-def panorama_thread_main(delay_sec):
+def panorama_thread_main(delay_sec, stream):
     print(f"{panorama_thread_main.name} starting...")
 
     colors = {}
@@ -303,6 +303,30 @@ def panorama_thread_main(delay_sec):
         Script.conditions[pin_id] = cp.array(Script.conditions[pin_id])
 
     Script.accumulation_normalization = cp.array(Script.accumulation_normalization)
+
+    if stream :
+        # UDP destination address and port
+        udp_address = '127.0.0.1'  # Use your desired IP address (e.g., '192.168.1.100')
+        udp_port = 5000
+
+
+        udp_url = f'udp://{udp_address}:{udp_port}'
+        #rtmp_url = "rtmp://your-rtmp-server/live/your-stream-key"
+        packet_size=1316
+        packet_size_str = ""#f'?pkt_size={packet_size}'
+        print(f'{udp_url=}')
+        process = (
+            ffmpeg
+            .input('pipe:', format='rawvideo', pix_fmt='rgb24', s=f'{Script.W}x{Script.H}')
+            #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")        .overwrite_output() # Overwrite if output.mp4 exists
+            .output(f'{udp_url}{packet_size_str}', 
+                format='mpegts',  # Or 'h264' if streaming raw H.264
+                vcodec='libx265', # Or 'copy' if input is already H.264
+                preset='ultrafast', 
+                tune='zerolatency'
+                )
+            .run_async(pipe_stdin=True)
+        )
 
     while panorama_thread_main.running :
 
@@ -339,11 +363,20 @@ def panorama_thread_main(delay_sec):
 
         panorama *= Script.accumulation_normalization
 
-        Script.panoramas.put(cp.asnumpy(panorama), block=False)
+        panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
+
+        Script.panoramas.put(panorama_numpy, block=False)
+
+        if stream :
+            process.stdin.write(panorama_numpy.tobytes())
 
         #print(f'Pan:{time.time() - start_time} s')
 
         time.sleep(delay_sec)
+
+    if stream :
+        process.stdin.close()
+        process.wait()
 
     print(f"{panorama_thread_main.name} finished.")
 
@@ -419,6 +452,7 @@ class Script :
         parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
         parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
         parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
+        parser.add_argument('--stream', action="store_true", help='show pin on each camera feed')
             
         Script.args = parser.parse_args()
 
@@ -805,7 +839,7 @@ class Script :
 
         panorama_daemon = Daemon()
         panorama_daemon.main = panorama_thread_main
-        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec,), daemon=True)
+        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec, Script.args.stream), daemon=True)
         panorama_daemon.main.name = f'PanoramaThread'
         panorama_daemon.main.running = True
         Script.daemons.append(panorama_daemon)
@@ -858,7 +892,7 @@ class Script :
                 else : 
                     print(f'Unable to save screenshot:{filename}')
     
-            cv2.imshow(window_name, panorama.astype(np.uint8))
+            cv2.imshow(window_name, panorama)
 
             #print(f'{time.time() - start_time}')
 

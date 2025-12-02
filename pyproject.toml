@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
+    "ffmpeg-python>=0.2.0",
     "opencv",
     "torch>=2.0.1",
     "torchvision>=0.15.2",
