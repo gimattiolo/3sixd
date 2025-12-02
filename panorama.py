@@ -289,7 +289,7 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
-def panorama_thread_main(delay_sec, stream):
+def panorama_thread_main(delay_sec):
     print(f"{panorama_thread_main.name} starting...")
 
     colors = {}
@@ -303,30 +303,6 @@ def panorama_thread_main(delay_sec, stream):
         Script.conditions[pin_id] = cp.array(Script.conditions[pin_id])
 
     Script.accumulation_normalization = cp.array(Script.accumulation_normalization)
-
-    if stream :
-        # UDP destination address and port
-        udp_address = '127.0.0.1'  # Use your desired IP address (e.g., '192.168.1.100')
-        udp_port = 5000
-
-
-        udp_url = f'udp://{udp_address}:{udp_port}'
-        #rtmp_url = "rtmp://your-rtmp-server/live/your-stream-key"
-        packet_size=1316
-        packet_size_str = ""#f'?pkt_size={packet_size}'
-        print(f'{udp_url=}')
-        process = (
-            ffmpeg
-            .input('pipe:', format='rawvideo', pix_fmt='rgb24', s=f'{Script.W}x{Script.H}')
-            #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")        .overwrite_output() # Overwrite if output.mp4 exists
-            .output(f'{udp_url}{packet_size_str}', 
-                format='mpegts',  # Or 'h264' if streaming raw H.264
-                vcodec='libx265', # Or 'copy' if input is already H.264
-                preset='ultrafast', 
-                tune='zerolatency'
-                )
-            .run_async(pipe_stdin=True)
-        )
 
     while panorama_thread_main.running :
 
@@ -367,19 +343,11 @@ def panorama_thread_main(delay_sec, stream):
 
         Script.panoramas.put(panorama_numpy, block=False)
 
-        if stream :
-            process.stdin.write(panorama_numpy.tobytes())
-
         #print(f'Pan:{time.time() - start_time} s')
 
         time.sleep(delay_sec)
 
-    if stream :
-        process.stdin.close()
-        process.wait()
-
     print(f"{panorama_thread_main.name} finished.")
-
 
 def camera_thread_main(delay_sec):
     print(f"{camera_thread_main.name} starting...")
@@ -839,7 +807,7 @@ class Script :
 
         panorama_daemon = Daemon()
         panorama_daemon.main = panorama_thread_main
-        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec, Script.args.stream), daemon=True)
+        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec,), daemon=True)
         panorama_daemon.main.name = f'PanoramaThread'
         panorama_daemon.main.running = True
         Script.daemons.append(panorama_daemon)
@@ -850,6 +818,48 @@ class Script :
 
         #in msec
         waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
+
+        if Script.args.stream :
+            # UDP destination address and port
+            udp_address = '127.0.0.1'  # Use your desired IP address (e.g., '192.168.1.100')
+            udp_port = 5000
+
+
+            # udp_url = f'udp://{udp_address}:{udp_port}'
+            #rtmp_url = "rtmp://your-rtmp-server/live/your-stream-key"
+            #url=f'rtp://{udp_address}:{udp_port}'
+            url = 'udp://127.0.0.1:5000?pkt_size=1316'
+            # packet_size=1316
+            # packet_size_str = f'?pkt_size={packet_size}'
+            print(f'{url=}')
+            # print(f'{packet_size_str=}')
+
+            # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
+
+            process = (
+                ffmpeg
+                # .input('/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
+                #        stream_loop=-1
+                #     )
+                .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+                #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
+                .output(
+                    f'{url}',                 
+                    # format='rtp',
+                    vcodec='libx264', # Or 'copy' if input is already H.264
+                    format='mpegts',  # Or 'h264' if streaming raw H.264
+                    #preset='ultrafast', 
+                    #tune='zerolatency',
+                    #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
+                    #'x264opts': 'bframes=0:weightp=0'
+                    #keyint='30', 
+                    #scenecut='0',
+                    # format='rawvideo', 
+                    # pix_fmt='rgb24',
+                    )
+                .overwrite_output()
+                .run_async(pipe_stdin=True)
+            )
 
         while running :
 
@@ -881,6 +891,9 @@ class Script :
             except Exception :
                 continue
 
+            if Script.args.stream :
+                process.stdin.write(panorama.tobytes())
+
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
 
@@ -908,6 +921,10 @@ class Script :
             if completed :
                 break
             time.sleep(1)
+
+        if Script.args.stream :
+            process.stdin.close()
+            process.wait()
 
         # When everything done, release the captures
         for pin_id in Script.cameraData :
