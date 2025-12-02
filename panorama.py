@@ -136,10 +136,13 @@ def Lerp(a0, a1, x) :
 # a0 is a scalar
 # a1 is H,W,3, 
 # x is H,W
-def Lerp_vectorized(a0, a1, x, out) :
+def Lerp_vectorized(x, a0, a1, out) :
     for i in range(3) :
         out[:,:,i] += a0 + (a1[:,:,i] - a0) * x
-    
+
+    # y = np.interp(x, xp=a0, fp=a1.reshape(Script.H*Script.W*3))
+    # out = y.reshape(Script.H, Script.W, 3)
+
 def Normalize(x) :
     return x / np.linalg.norm(x)
 
@@ -288,6 +291,9 @@ def panorama_thread_main(delay_sec):
 
     colors = {}
 
+    # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
+    # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
+
     while panorama_thread_main.running :
 
         start_time = time.time()
@@ -318,8 +324,9 @@ def panorama_thread_main(delay_sec):
 
             #############
 
-            Lerp_vectorized(0.0, color, Script.conditions[pin_id], panorama)
-            
+            Lerp_vectorized(Script.conditions[pin_id], 0.0, color, panorama)
+            #Lerp_vectorized(zeros, zeros, color, panorama)
+
         panorama[:,:,0] *= Script.accumulation_normalization
         panorama[:,:,1] *= Script.accumulation_normalization
         panorama[:,:,2] *= Script.accumulation_normalization
