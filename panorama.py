@@ -326,9 +326,7 @@ def panorama_thread_main(delay_sec):
             Lerp_vectorized(Script.conditions[pin_id], 0.0, color, panorama)
             #Lerp_vectorized(zeros, zeros, color, panorama)
 
-        panorama[:,:,0] *= Script.accumulation_normalization
-        panorama[:,:,1] *= Script.accumulation_normalization
-        panorama[:,:,2] *= Script.accumulation_normalization
+        panorama *= Script.accumulation_normalization
 
         Script.panoramas.put(panorama, block=False)
 
@@ -761,6 +759,9 @@ class Script :
         #print(f'{num_acculations.min()}|{num_acculations.max()}')
 
         Script.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
+        # replicate along rgb
+        Script.accumulation_normalization = np.tile(Script.accumulation_normalization[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
+
 
         ray_inW = np.reshape(ray_inW, (3, Script.H, Script.W))
         ray_inW = np.transpose(ray_inW, (1, 2, 0))
