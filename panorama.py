@@ -289,16 +289,22 @@ def panorama_thread_main(delay_sec):
     colors = {}
     while panorama_thread_main.running :
 
+        start_time = time.time()
+
         Script.cameraLockObject.acquire() 
-        for pin_id, cameraDatum in Script.cameraData.items() :
-            colors[pin_id] = cameraDatum.frame.copy()
+        for pin_id in Script.cameraData :
+            colors[pin_id] = Script.cameraData[pin_id].frame.copy()
         Script.cameraLockObject.release() 
+
+        #print(f'Cam:{time.time() - start_time} s')
+
+        start_time = time.time()
 
         # make panorama
         Script.panoramaLockObject.acquire() 
 
         Script.panorama.fill(0.0)
-        for pin_id, cameraDatum in Script.cameraData.items() :
+        for pin_id in Script.cameraData :
 
             pixel = Script.pixel_coords[pin_id]
             color = colors[pin_id][pixel[:, :, 0], pixel[:, :, 1], :]
@@ -320,8 +326,9 @@ def panorama_thread_main(delay_sec):
         
         Script.panoramaLockObject.release() 
 
-        time.sleep(delay_sec)
+        #print(f'Pan:{time.time() - start_time} s')
 
+        time.sleep(delay_sec)
 
     print(f"{panorama_thread_main.name} finished.")
 
@@ -340,8 +347,10 @@ def camera_thread_main(delay_sec):
 
         camerasOK = True
 
+        # start_time = time.time()
         Script.cameraLockObject.acquire() 
-        for pin_id, cameraDatum in Script.cameraData.items() :
+        for pin_id in Script.cameraData :
+            cameraDatum = Script.cameraData[pin_id]
             if cameraDatum.capture.isOpened() :
                 # Capture frame-by-frame
                 ret, cameraDatum.frame = cameraDatum.capture.read()
@@ -364,6 +373,8 @@ def camera_thread_main(delay_sec):
             else :
                 camerasOK = False
         Script.cameraLockObject.release()
+        # print(f'{time.time() - start_time}')
+
         # Display the resulting frame
 
         if not camerasOK :
@@ -789,7 +800,6 @@ class Script :
             key = cv2.waitKey(waitKeyPeriod_msec)
             # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
 
-            start_time = time.time()
 
             if key == ord('q') :#or not window_visible:
                 for daemon in Script.daemons :
@@ -805,20 +815,27 @@ class Script :
             # print(window_visible)
 
 
+            #start_time = time.time()
             # save screenshot
-            Script.panoramaLockObject.acquire()
+            
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
-                if cv2.imwrite(filename=filename, img=Script.panorama) :
+
+                Script.panoramaLockObject.acquire()
+                ret = cv2.imwrite(filename=filename, img=Script.panorama)
+                Script.panoramaLockObject.release()
+
+                if ret :
                     print(f'Screenshot saved:{filename}')
                     output_id += 1
                 else : 
                     print(f'Unable to save screenshot:{filename}')
     
+            Script.panoramaLockObject.acquire()
             cv2.imshow(window_name, Script.panorama.astype(np.uint8))
             Script.panoramaLockObject.release()
 
-            # print(f'{time.time() - start_time}')
+            #print(f'{time.time() - start_time}')
 
         # wait for threads to be completed
 
