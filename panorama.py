@@ -137,8 +137,7 @@ def Lerp(a0, a1, x) :
 # a1 is H,W,3, 
 # x is H,W
 def Lerp_vectorized(x, a0, a1, out) :
-    for i in range(3) :
-        out[:,:,i] += a0 + (a1[:,:,i] - a0) * x
+    out += a0 + (a1 - a0) * x
 
     # y = np.interp(x, xp=a0, fp=a1.reshape(Script.H*Script.W*3))
     # out = y.reshape(Script.H, Script.W, 3)
@@ -754,7 +753,9 @@ class Script :
             pixel[:,:,0] *= condition_int
             pixel[:,:,1] *= condition_int
 
-            Script.conditions[pin_id] = condition.astype(np.float32)
+            # replicate along rgb
+            Script.conditions[pin_id] = np.tile(condition[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
+            
             Script.pixel_coords[pin_id] = pixel
 
         #print(f'{num_acculations.min()}|{num_acculations.max()}')
