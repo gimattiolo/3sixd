@@ -6,6 +6,8 @@ import re
 import time
 import shutil
 import math
+import threading
+
 
 import numpy as np
 import cv2
@@ -281,116 +283,52 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
-def main():
-    parser = argparse.ArgumentParser('Panorama')
-    parser.add_argument('--path', type=str, help='set the capture destination folder')
-    parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
-    parser.add_argument('--intrinsic_path', type=str, help='set the intrinsic image capture source folder/data export folder')
-    parser.add_argument('--extrinsic_path', type=str, help='set the extrinsic image capture source folder/data export folder')
-    parser.add_argument('--world_space_path', type=str, default='', help='set the world space capture source folder/data export folder')
-    parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
-    parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
-    parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
+def panorama_thread_main(delay_sec):
+    print(f"{panorama_thread_main.name} starting...")
+
+    colors = {}
+    while panorama_thread_main.running :
+
+        Script.cameraLockObject.acquire() 
+        for pin_id, cameraDatum in Script.cameraData.items() :
+            colors[pin_id] = cameraDatum.frame.copy()
+        Script.cameraLockObject.release() 
+
+        # make panorama
+        Script.panoramaLockObject.acquire() 
+
+        Script.panorama.fill(0.0)
+        for pin_id, cameraDatum in Script.cameraData.items() :
+
+            pixel = Script.pixel_coords[pin_id]
+            color = colors[pin_id][pixel[:, :, 0], pixel[:, :, 1], :]
+
+            ### debug ###
+
+            #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
+            
+            #color.fill(0.0)
+            #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
+            #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
+
+            #############
+
+            Lerp_vectorized(0.0, color, Script.conditions[pin_id], Script.panorama)
+        Script.panorama[:,:,0] *= Script.accumulation_normalization
+        Script.panorama[:,:,1] *= Script.accumulation_normalization
+        Script.panorama[:,:,2] *= Script.accumulation_normalization
         
-    args = parser.parse_args()
+        Script.panoramaLockObject.release() 
 
-    assert(len(args.pairs) == len(args.flip_methods))
+        time.sleep(delay_sec)
 
-    cyclical = args.pairs[0] == args.pairs[-1]
 
-    #in msec
-    waitKeyPeriod = 16
-        
-    SaveMode = args.save_mode
-    
-    # allowed_pins = [1,2,3,4,5]
-    pin_data = GetPinsData(args.pairs, args.flip_methods)
-    
-    #allowed_pins = None
-    cameraData = ScanCameras(pin_data)
+    print(f"{panorama_thread_main.name} finished.")
 
-    num_cameras = len(cameraData)
 
-    assert num_cameras >= 0
+def camera_thread_main(delay_sec):
+    print(f"{camera_thread_main.name} starting...")
 
-    pin_ids = list(cameraData.keys())
-
-    print(f'Using cameras:{cameraData}')
-
-    print(f'Using path {args.path}')      
-
-    ext = '.png'
-
-    # width, height
-    H, W = (1080, 1920)
-    #H, W = (400, 400)
-
-    size_default = (H,W) 
-
-    empty_frame = np.zeros((H, W, 3), dtype=np.float32)
-
-    empty_frame[:, :, 2] = 255.0 
-
-    if not os.path.exists(args.path) :
-        os.mkdir(args.path)
-
-    if not os.path.exists(args.path) :
-        print("Invalid path " + args.path)
-        sys.exit(1)
-
-    pair_list = CalibrationUtilities.MakePairs(args.pairs, pin_ids)        
-
-    # pairsPerFirst = {}
-    # pairsPerSecond = {}
-    # for i, e in enumerate(pair_list) :
-    #     first, second = e
-    #     assert first not in pairsPerFirst
-    #     pairsPerFirst[first] = i
-    #     assert second not in pairsPerSecond
-    #     pairsPerSecond[second] = i
-
-    if not pair_list :
-        return
-
-    print("Creating capture objects...")
-
-    # (0): none             - Identity (no rotation)
-    # (1): counterclockwise - Rotate counter-clockwise 90 degrees
-    # (2): rotate-180       - Rotate 180 degrees
-    # (3): clockwise        - Rotate clockwise 90 degrees
-    # (4): horizontal-flip  - Flip horizontally
-    # (5): upper-right-diagonal - Flip across upper right/lower left diagonal
-    # (6): vertical-flip    - Flip vertically
-    # (7): upper-left-diagonal - Flip across upper left/low
-    # without this images are upside down
-    flip_method = 2
-    api_preference=cv2.CAP_GSTREAMER
-
-    for k in range(len(pin_ids)) :
-        pin_id = pin_ids[k]
-        cameraDatum = cameraData[pin_id]
-        pinDatum = pin_data[pin_id]
-
-        pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
-        cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
-        print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
-    # create views in the window
-
-    panorama = np.zeros((H, W, 3), np.float32)
-
-    running = True
-    if SaveMode == 0 :
-        pass
-    elif SaveMode == 1 :
-        # delete
-        shutil.rmtree(args.path, ignore_errors=False, onerror=None)
-        os.mkdir(args.path)
-    else :
-        print(f'Unsupported save mode:{SaveMode}')
-        exit(1)
-
-    captureIndex = 0
-    
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
     fontScale              = 5
@@ -398,284 +336,21 @@ def main():
     thickness              = 10
     lineType               = cv2.LINE_8
 
-    num_simultanous = 2
-
-    now = time.time()
-
-    startCaptureTime = now
-
-    window_name = 'Panorama'
-
-    # SD (Standard Definition)	640 x 480	4:3	480p
-    # HD (High Definition	1280 x 720	16:9	720p
-    # Full HD	1920 x 1080	16:9	1080p
-    # 2K	2048 x 1152	1:1.77	N/A
-    # UHD	3840 x 2160	16:9	Sometimes called “2160p” and often mistakenly referred to as “4k”
-    # DCI 4K	4096 x 2160	1:1.9	Just 4K (the “DCI” part is sometimes dropped)
-    
-
-    # tipically [1.7, 2.2, 3.5, 4.6, 6.5, 7.0, 10.0, 14.0] micrometers
-    # see https://www.vision-doctor.com/en/camera-technology-basics/sensor-and-pixel-sizes.html#:~:text=Industrial%20cameras%20usually%20use%201,with%20the%20same%20pixel%20size.
-    pixelSize_m = 1.0
-    scale = 0.1    
-
-    cameraCalibrationOK = True
-
-    for k0 in range(0, num_cameras) :
-        c0 = pin_ids[k0]
-
-        cameraDatum = cameraData[c0]
-
-        cameraFilename = os.path.join(args.intrinsic_path, f'calibration{c0}.json')
-        
-        camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize = WaveUtilities.LoadCameraCalibration(cameraFilename)
-
-        cameraCalibrationOK = cameraCalibrationOK and camaraCalibrationLoaded
-
-        if not cameraCalibrationOK :
-            break
-
-        cameraDatum.f_pixels, cameraDatum.h_pixels, cameraDatum.ar = WaveUtilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
-        
-        print(f'Camera {c0} using focal length {cameraDatum.f_pixels}[pixels], image height {cameraDatum.h_pixels}[pixels], aspect ratio {cameraDatum.ar}, pixelSize {pixelSize_m}[m], scale {scale}')
-
-    if not cameraCalibrationOK :
-        print('Unable to load camera calibrations')
-        sys.exit(1)
-
-    stereoCalibrationOK = True
-
-    ProjectionMatrices = {}
-    ExtrinsicMatrices = {}
-
-    first_pin_id = pin_ids[0]
-
-    ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
-
-    # load extrinsics
-    for c0, c1 in pair_list :
-        key = (c0, c1)
-        invKey = (c1, c0)
-
-        stereoFilename = os.path.join(args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
-        stereoCalibrationLoaded, R, T, E, F, S = WaveUtilities.LoadStereoCalibration(stereoFilename)
-
-        stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
-        
-        if not stereoCalibrationOK :
-            break
-
-        # print(f'Stereo pair {c0}->{c1} using\nR=\n{R}\nT=\n{T}\nS={S}')
-        
-        # from c0 to c1
-        E3x4 = np.block( [
-            [ R, T ],
-        ] )
-
-        invR = np.transpose(R)
-        #invT = -inverse(R) * T
-        invT = -np.dot(invR, T) 
-
-        # from c1 to c0
-        invE3x4 = np.block( [
-            [ invR, invT ],
-        ] )
-
-        E4x4 = np.block( [
-            [ E3x4 ],
-            [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-        ] )
-
-        invE4x4 = np.block( [
-            [ invE3x4 ],
-            [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-        ] )
-
-        ExtrinsicMatrices[key] = E4x4
-        ExtrinsicMatrices[invKey] = invE4x4
-
-        # load worldspace info
-        # worldSpaceFilename = os.path.join(args.world_space_path, f'worldSpaceCalibration{c0}.json')
-        # worldSpaceCalibrationLoaded, R, T, S = WaveUtilities.LoadWorldSpaceCalibration(worldSpaceFilename)
-        # if worldSpaceCalibrationLoaded:
-        #     # from world to c0
-        #     WC3x4 = np.block( [
-        #         [ R, T ],
-        #     ] )
-
-        #     WC4x4 = np.block( [
-        #         [ WC3x4 ],
-        #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-        #     ])
-
-        #     invR = np.linalg.inv(R)
-        #     invT = -np.dot(invR, T) 
-
-        #     # from c0 to world
-        #     invWC3x4 = np.block( [
-        #         [ invR, invT ],
-        #     ] )            
-
-        #     invWC4x4 = np.block( [
-        #         [ invWC3x4 ],
-        #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
-        #     ] )
-
-        #     # store the matrix to transform from each camera's space to world space
-        #     CamToWorldMatrices[c0] = invWC4x4
-        #     WorldToCamMatrices[c0] = WC4x4
-        # else:
-        #     # identity
-        #     CamToWorldMatrices[c0] = np.identity(4)
-        #     WorldToCamMatrices[c0] = np.identity(4)
-
-    if not stereoCalibrationOK :
-        print('Unable to load stereo calibrations')
-        sys.exit(1)
-
-    # store matrices from c0 -> ci
-    Ms_c0_ci = {}
-    Ms_ci_c0 = {}
-
-    # from c0 -> ci
-    M = np.identity(4)
-
-    for k0 in range(len(args.pairs)-1) :
-
-        first = args.pairs[k0]
-
-        Ms_c0_ci[first] = M.copy()
-        Ms_ci_c0[first] = CalibrationUtilities.invertExtrisics(M)
-
-        second = args.pairs[k0+1]
-
-        M = np.dot(ExtrinsicMatrices[(first, second)], M)
-
-    last_pin_id = args.pairs[-1]
-
-    if not cyclical :
-        Ms_c0_ci[last_pin_id] = M.copy()
-        Ms_ci_c0[last_pin_id] = CalibrationUtilities.invertExtrisics(M)
-
-    M_w_c0 = ComputeWorldToC0(Ms_ci_c0, pin_ids)
-
-    for k0 in range(num_cameras) :
-        pin_id = pin_ids[k0]
-
-        cameraDatum = cameraData[pin_id]
-
-        # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
-        
-        #world - > ci
-        E_w_ci_4x4 = np.dot(Ms_c0_ci[pin_id], M_w_c0)
-        ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
-
-    print("Running...")
-
-    window_visible = True
-
-    i_uv = MakeUV(size_default)
-    gammaTheta = UV2Angle_vectorized(i_uv)
-    ray_inW = Angle2Dir_vectorized(gammaTheta)
-    ray_inW = ray_inW.reshape((3,-1))    
-
-    pixel_coords= {}
-    conditions = {}
-
-    num_acculations = np.zeros((H,W), dtype=np.float32)
-
-    for pin_id, cameraDatum in cameraData.items() :
-
-        # in the following we assume the focal quad has size 1 x 1
-        # and is at distance f along z relative to the camera
-        # hfovAngle_rad = math.atan(0.5 * cameraDatum.h_pixels / cameraDatum.f_pixels)
-        # hfovAngle_deg = math.degrees(hfovAngle_rad)
-        
-        # hh_meters = 0.5
-        # hw_meters = hh_meters * cameraDatum.ar
-        # half_size = np.array([hw_meters, hh_meters])
-        # f_meters = hh_meters / math.tan(hfovAngle_rad)
-
-        # for each pixel fo the 360m texture gets the ray in world space
-
-        # _M_W2V = np.ones((3,3))
-
-        # ray_inV = np.matmul(_M_W2V, ray_inW)
-        # ray_inV = np.reshape(ray_inV, (3, H, W))
-        # #3,H,W -> H,W,3
-        # ray_inV = np.transpose(ray_inV, (1, 2, 0))
-
-        # factor = f_meters / np.maximum(ray_inV[:, :, 2], 0.001)
-
-        # ray_inV[:, :,0] *= factor
-        # ray_inV[:, :,1] *= factor
-        # ray_inV[:, :,2] *= factor
-
-        # uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
-        
-        # image origin in top left 
-        # image x is from left to right
-        # image y is from top to bottom
-        # z is forward
-        # right handed
-        ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
-        ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
-        ps = np.reshape(ps[0:2, :], (2, H, W))
-        #2,H,W -> H,W,2
-        ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
-
-        pixel_x = ps[:, :, 0]
-        pixel_y = ps[:, :, 1]
-
-        mask_x = (0 <= pixel_x) & (pixel_x < W)
-        mask_y = (0 <= pixel_y) & (pixel_y < H)
-        condition = mask_x & mask_y
-
-        num_acculations += condition
-
-        # Combine into a single array of pixel coordinates
-        # y is row, x is column
-        pixel = np.stack((pixel_y, pixel_x), axis=2)
-
-        condition_int = condition.astype(np.int32)
-
-        # we do this so when sampling we don't have invalid pixel coordinates
-        pixel[:,:,0] *= condition_int
-        pixel[:,:,1] *= condition_int
-
-        conditions[pin_id] = condition.astype(np.float32)
-        pixel_coords[pin_id] = pixel
-
-    #print(f'{num_acculations.min()}|{num_acculations.max()}')
-
-    accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
-
-    ray_inW = np.reshape(ray_inW, (3, H, W))
-    ray_inW = np.transpose(ray_inW, (1, 2, 0))
-
-    output_id = 0
-
-    font                   = cv2.FONT_HERSHEY_SIMPLEX
-    origin = (800,500)
-    fontScale              = 5
-    fontColor              = (255,0,0) # red in BGR
-    thickness              = 10
-    lineType               = cv2.LINE_8
-
-    while running :
-        now = time.time()
+    while camera_thread_main.running :
 
         camerasOK = True
-        for pin_id, cameraDatum in cameraData.items() :
+
+        Script.cameraLockObject.acquire() 
+        for pin_id, cameraDatum in Script.cameraData.items() :
             if cameraDatum.capture.isOpened() :
                 # Capture frame-by-frame
                 ret, cameraDatum.frame = cameraDatum.capture.read()
 
                 if not ret :
                     print(f'{pin_id} not reading frames')
-                    cameraDatum.frame = empty_frame.copy()
+                    cameraDatum.frame = Script.empty_frame.copy()
 
-                if args.show_pin :
+                if Script.args.show_pin :
                     cv2.putText(cameraDatum.frame, 
                         f"Pin{pin_id}", 
                         origin, 
@@ -688,68 +363,483 @@ def main():
 
             else :
                 camerasOK = False
+        Script.cameraLockObject.release()
         # Display the resulting frame
 
         if not camerasOK :
             print('Unable to open all the required cameras')
-            continue
 
-        key = cv2.waitKey(waitKeyPeriod)
-        # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
+        time.sleep(delay_sec)
 
-        if key == ord('q') :#or not window_visible:
-            running = False
-            break
+    print(f"{camera_thread_main.name} finished.")
 
-        # if cv2.getWindowProperty("foo", cv2.WND_PROP_VISIBLE):
-        #     window_visible = True
-        # else :
-        #     window_visible = False
+class Daemon :
+    def reset(self) :
+        self.thread = ''
+        self.main = ''
 
-        # print(window_visible)
+    def __init__(self) :
+        self.reset()    
 
-        # make panorama
-        panorama.fill(0.0)
-        for pin_id, cameraDatum in cameraData.items() :
 
-            pixel = pixel_coords[pin_id]
-
-            color = cameraDatum.frame[pixel[:, :, 0], pixel[:, :, 1], :]
-
-            ### debug ###
-
-            #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
+class Script :
+    def main():
+        parser = argparse.ArgumentParser('Panorama')
+        parser.add_argument('--path', type=str, help='set the capture destination folder')
+        parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
+        parser.add_argument('--intrinsic_path', type=str, help='set the intrinsic image capture source folder/data export folder')
+        parser.add_argument('--extrinsic_path', type=str, help='set the extrinsic image capture source folder/data export folder')
+        parser.add_argument('--world_space_path', type=str, default='', help='set the world space capture source folder/data export folder')
+        parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
+        parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
+        parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
             
-            #color.fill(0.0)
-            #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
-            #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
+        Script.args = parser.parse_args()
 
-            #############
+        assert(len(Script.args.pairs) == len(Script.args.flip_methods))
 
-            Lerp_vectorized(0.0, color, conditions[pin_id], panorama)
+        cyclical = Script.args.pairs[0] == Script.args.pairs[-1]
 
-        panorama[:,:,0] *= accumulation_normalization
-        panorama[:,:,1] *= accumulation_normalization
-        panorama[:,:,2] *= accumulation_normalization
+        SaveMode = Script.args.save_mode
+        
+        # allowed_pins = [1,2,3,4,5]
+        pin_data = GetPinsData(Script.args.pairs, Script.args.flip_methods)
+        
+        #allowed_pins = None
+        Script.cameraData = ScanCameras(pin_data)
 
-        # save screenshot
-        if key == ord('s') :
-            filename = os.path.join(args.path, f'panorama_{output_id}.png')
-            if cv2.imwrite(filename=filename, img=panorama) :
-                print(f'Screenshot saved:{filename}')
-                output_id += 1
-            else : 
-                print(f'Unable to save screenshot:{filename}')
- 
-        cv2.imshow(window_name, panorama.astype(np.uint8))
+        num_cameras = len(Script.cameraData)
 
-    # When everything done, release the captures
-    for pin_id, cameraDatum in cameraData.items() :
-        cameraDatum.release()
+        assert num_cameras >= 0
 
-    time.sleep(5)
+        pin_ids = list(Script.cameraData.keys())
 
-    cv2.destroyAllWindows()
+        print(f'Using cameras:{Script.cameraData}')
+
+        print(f'Using path {Script.args.path}')      
+
+        ext = '.png'
+
+        # width, height
+        H, W = (1080, 1920)
+        #H, W = (400, 400)
+
+        size_default = (H,W) 
+
+        Script.empty_frame = np.zeros((H, W, 3), dtype=np.float32)
+
+        Script.empty_frame[:, :, 2] = 255.0 
+
+        if not os.path.exists(Script.args.path) :
+            os.mkdir(Script.args.path)
+
+        if not os.path.exists(Script.args.path) :
+            print("Invalid path " + Script.args.path)
+            sys.exit(1)
+
+        pair_list = CalibrationUtilities.MakePairs(Script.args.pairs, pin_ids)        
+
+        # pairsPerFirst = {}
+        # pairsPerSecond = {}
+        # for i, e in enumerate(pair_list) :
+        #     first, second = e
+        #     assert first not in pairsPerFirst
+        #     pairsPerFirst[first] = i
+        #     assert second not in pairsPerSecond
+        #     pairsPerSecond[second] = i
+
+        if not pair_list :
+            return
+
+        print("Creating capture objects...")
+
+        # (0): none             - Identity (no rotation)
+        # (1): counterclockwise - Rotate counter-clockwise 90 degrees
+        # (2): rotate-180       - Rotate 180 degrees
+        # (3): clockwise        - Rotate clockwise 90 degrees
+        # (4): horizontal-flip  - Flip horizontally
+        # (5): upper-right-diagonal - Flip across upper right/lower left diagonal
+        # (6): vertical-flip    - Flip vertically
+        # (7): upper-left-diagonal - Flip across upper left/low
+        # without this images are upside down
+        flip_method = 2
+        api_preference=cv2.CAP_GSTREAMER
+
+        for k in range(len(pin_ids)) :
+            pin_id = pin_ids[k]
+            cameraDatum = Script.cameraData[pin_id]
+            pinDatum = pin_data[pin_id]
+
+            pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
+            cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
+            print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
+            cameraDatum.frame = Script.empty_frame.copy()
+        # create views in the window
+
+        Script.panorama = np.zeros((H, W, 3), np.float32)
+
+        running = True
+        if SaveMode == 0 :
+            pass
+        elif SaveMode == 1 :
+            # delete
+            shutil.rmtree(Script.args.path, ignore_errors=False, onerror=None)
+            os.mkdir(Script.args.path)
+        else :
+            print(f'Unsupported save mode:{SaveMode}')
+            exit(1)
+
+        captureIndex = 0
+
+        num_simultanous = 2
+
+        now = time.time()
+
+        startCaptureTime = now
+
+        window_name = 'Panorama'
+
+        # SD (Standard Definition)	640 x 480	4:3	480p
+        # HD (High Definition	1280 x 720	16:9	720p
+        # Full HD	1920 x 1080	16:9	1080p
+        # 2K	2048 x 1152	1:1.77	N/A
+        # UHD	3840 x 2160	16:9	Sometimes called “2160p” and often mistakenly referred to as “4k”
+        # DCI 4K	4096 x 2160	1:1.9	Just 4K (the “DCI” part is sometimes dropped)
+        
+
+        # tipically [1.7, 2.2, 3.5, 4.6, 6.5, 7.0, 10.0, 14.0] micrometers
+        # see https://www.vision-doctor.com/en/camera-technology-basics/sensor-and-pixel-sizes.html#:~:text=Industrial%20cameras%20usually%20use%201,with%20the%20same%20pixel%20size.
+        pixelSize_m = 1.0
+        scale = 0.1    
+
+        cameraCalibrationOK = True
+
+        for k0 in range(0, num_cameras) :
+            c0 = pin_ids[k0]
+
+            cameraDatum = Script.cameraData[c0]
+
+            cameraFilename = os.path.join(Script.args.intrinsic_path, f'calibration{c0}.json')
+            
+            camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize = WaveUtilities.LoadCameraCalibration(cameraFilename)
+
+            cameraCalibrationOK = cameraCalibrationOK and camaraCalibrationLoaded
+
+            if not cameraCalibrationOK :
+                break
+
+            cameraDatum.f_pixels, cameraDatum.h_pixels, cameraDatum.ar = WaveUtilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
+            
+            print(f'Camera {c0} using focal length {cameraDatum.f_pixels}[pixels], image height {cameraDatum.h_pixels}[pixels], aspect ratio {cameraDatum.ar}, pixelSize {pixelSize_m}[m], scale {scale}')
+
+        if not cameraCalibrationOK :
+            print('Unable to load camera calibrations')
+            sys.exit(1)
+
+        stereoCalibrationOK = True
+
+        ProjectionMatrices = {}
+        ExtrinsicMatrices = {}
+
+        first_pin_id = pin_ids[0]
+
+        ExtrinsicMatrices[(first_pin_id, first_pin_id)] = np.identity(4, dtype=np.float32)
+
+        # load extrinsics
+        for c0, c1 in pair_list :
+            key = (c0, c1)
+            invKey = (c1, c0)
+
+            stereoFilename = os.path.join(Script.args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
+            stereoCalibrationLoaded, R, T, E, F, S = WaveUtilities.LoadStereoCalibration(stereoFilename)
+
+            stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
+            
+            if not stereoCalibrationOK :
+                break
+
+            # print(f'Stereo pair {c0}->{c1} using\nR=\n{R}\nT=\n{T}\nS={S}')
+            
+            # from c0 to c1
+            E3x4 = np.block( [
+                [ R, T ],
+            ] )
+
+            invR = np.transpose(R)
+            #invT = -inverse(R) * T
+            invT = -np.dot(invR, T) 
+
+            # from c1 to c0
+            invE3x4 = np.block( [
+                [ invR, invT ],
+            ] )
+
+            E4x4 = np.block( [
+                [ E3x4 ],
+                [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+            ] )
+
+            invE4x4 = np.block( [
+                [ invE3x4 ],
+                [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+            ] )
+
+            ExtrinsicMatrices[key] = E4x4
+            ExtrinsicMatrices[invKey] = invE4x4
+
+            # load worldspace info
+            # worldSpaceFilename = os.path.join(Script.args.world_space_path, f'worldSpaceCalibration{c0}.json')
+            # worldSpaceCalibrationLoaded, R, T, S = WaveUtilities.LoadWorldSpaceCalibration(worldSpaceFilename)
+            # if worldSpaceCalibrationLoaded:
+            #     # from world to c0
+            #     WC3x4 = np.block( [
+            #         [ R, T ],
+            #     ] )
+
+            #     WC4x4 = np.block( [
+            #         [ WC3x4 ],
+            #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+            #     ])
+
+            #     invR = np.linalg.inv(R)
+            #     invT = -np.dot(invR, T) 
+
+            #     # from c0 to world
+            #     invWC3x4 = np.block( [
+            #         [ invR, invT ],
+            #     ] )            
+
+            #     invWC4x4 = np.block( [
+            #         [ invWC3x4 ],
+            #         [ np.array([ 0.0, 0.0, 0.0, 1.0 ]) ]
+            #     ] )
+
+            #     # store the matrix to transform from each camera's space to world space
+            #     CamToWorldMatrices[c0] = invWC4x4
+            #     WorldToCamMatrices[c0] = WC4x4
+            # else:
+            #     # identity
+            #     CamToWorldMatrices[c0] = np.identity(4)
+            #     WorldToCamMatrices[c0] = np.identity(4)
+
+        if not stereoCalibrationOK :
+            print('Unable to load stereo calibrations')
+            sys.exit(1)
+
+        # store matrices from c0 -> ci
+        Ms_c0_ci = {}
+        Ms_ci_c0 = {}
+
+        # from c0 -> ci
+        M = np.identity(4)
+
+        for k0 in range(len(Script.args.pairs)-1) :
+
+            first = Script.args.pairs[k0]
+
+            Ms_c0_ci[first] = M.copy()
+            Ms_ci_c0[first] = CalibrationUtilities.invertExtrisics(M)
+
+            second = Script.args.pairs[k0+1]
+
+            M = np.dot(ExtrinsicMatrices[(first, second)], M)
+
+        last_pin_id = Script.args.pairs[-1]
+
+        if not cyclical :
+            Ms_c0_ci[last_pin_id] = M.copy()
+            Ms_ci_c0[last_pin_id] = CalibrationUtilities.invertExtrisics(M)
+
+        M_w_c0 = ComputeWorldToC0(Ms_ci_c0, pin_ids)
+
+        for k0 in range(num_cameras) :
+            pin_id = pin_ids[k0]
+
+            cameraDatum = Script.cameraData[pin_id]
+
+            # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
+            
+            #world - > ci
+            E_w_ci_4x4 = np.dot(Ms_c0_ci[pin_id], M_w_c0)
+            ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
+
+        print("Running...")
+
+        window_visible = True
+
+        i_uv = MakeUV(size_default)
+        gammaTheta = UV2Angle_vectorized(i_uv)
+        ray_inW = Angle2Dir_vectorized(gammaTheta)
+        ray_inW = ray_inW.reshape((3,-1))    
+
+        Script.pixel_coords= {}
+        Script.conditions = {}
+
+        num_acculations = np.zeros((H,W), dtype=np.float32)
+
+        for pin_id, cameraDatum in Script.cameraData.items() :
+
+            # in the following we assume the focal quad has size 1 x 1
+            # and is at distance f along z relative to the camera
+            # hfovAngle_rad = math.atan(0.5 * cameraDatum.h_pixels / cameraDatum.f_pixels)
+            # hfovAngle_deg = math.degrees(hfovAngle_rad)
+            
+            # hh_meters = 0.5
+            # hw_meters = hh_meters * cameraDatum.ar
+            # half_size = np.array([hw_meters, hh_meters])
+            # f_meters = hh_meters / math.tan(hfovAngle_rad)
+
+            # for each pixel fo the 360m texture gets the ray in world space
+
+            # _M_W2V = np.ones((3,3))
+
+            # ray_inV = np.matmul(_M_W2V, ray_inW)
+            # ray_inV = np.reshape(ray_inV, (3, H, W))
+            # #3,H,W -> H,W,3
+            # ray_inV = np.transpose(ray_inV, (1, 2, 0))
+
+            # factor = f_meters / np.maximum(ray_inV[:, :, 2], 0.001)
+
+            # ray_inV[:, :,0] *= factor
+            # ray_inV[:, :,1] *= factor
+            # ray_inV[:, :,2] *= factor
+
+            # uvs = 0.5 * (1.0 + ray_inV[:, :, 0:2] / half_size)
+            
+            # image origin in top left 
+            # image x is from left to right
+            # image y is from top to bottom
+            # z is forward
+            # right handed
+            ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
+            ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
+            ps = np.reshape(ps[0:2, :], (2, H, W))
+            #2,H,W -> H,W,2
+            ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
+
+            pixel_x = ps[:, :, 0]
+            pixel_y = ps[:, :, 1]
+
+            mask_x = (0 <= pixel_x) & (pixel_x < W)
+            mask_y = (0 <= pixel_y) & (pixel_y < H)
+            condition = mask_x & mask_y
+
+            num_acculations += condition
+
+            # Combine into a single array of pixel coordinates
+            # y is row, x is column
+            pixel = np.stack((pixel_y, pixel_x), axis=2)
+
+            condition_int = condition.astype(np.int32)
+
+            # we do this so when sampling we don't have invalid pixel coordinates
+            pixel[:,:,0] *= condition_int
+            pixel[:,:,1] *= condition_int
+
+            Script.conditions[pin_id] = condition.astype(np.float32)
+            Script.pixel_coords[pin_id] = pixel
+
+        #print(f'{num_acculations.min()}|{num_acculations.max()}')
+
+        Script.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
+
+        ray_inW = np.reshape(ray_inW, (3, H, W))
+        ray_inW = np.transpose(ray_inW, (1, 2, 0))
+
+        output_id = 0
+
+        font                   = cv2.FONT_HERSHEY_SIMPLEX
+        origin = (800,500)
+        fontScale              = 5
+        fontColor              = (255,0,0) # red in BGR
+        thickness              = 10
+        lineType               = cv2.LINE_8
+
+        Script.cameraLockObject = threading.Lock()
+        Script.panoramaLockObject = threading.Lock()
+
+        fps = 60.0
+        delta_time_sec = 1.0 / fps
+
+        # Create threads
+
+        camera_daemon = Daemon()
+        camera_daemon.main = camera_thread_main
+        camera_daemon.thread = threading.Thread(target=camera_daemon.main, args=(delta_time_sec,), daemon=True)
+        camera_daemon.main.name = f'CameraThread'
+        camera_daemon.main.running = True
+
+        panorama_daemon = Daemon()
+        panorama_daemon.main = panorama_thread_main
+        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(delta_time_sec,), daemon=True)
+        panorama_daemon.main.name = f'PanoramaThread'
+        panorama_daemon.main.running = True
+        # Start threads
+        Script.daemons = [ camera_daemon, panorama_daemon ] 
+
+        # Start threads
+        for daemon in Script.daemons :      
+            daemon.thread.start()
+
+        #in msec
+        waitKeyPeriod_msec = int(delta_time_sec * 1000.0)
+
+        while running :
+
+            key = cv2.waitKey(waitKeyPeriod_msec)
+            # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
+
+            start_time = time.time()
+
+            if key == ord('q') :#or not window_visible:
+                for daemon in Script.daemons :
+                    daemon.main.running = False
+                running = False
+                break
+
+            # if cv2.getWindowProperty("foo", cv2.WND_PROP_VISIBLE):
+            #     window_visible = True
+            # else :
+            #     window_visible = False
+
+            # print(window_visible)
+
+
+            # save screenshot
+            Script.panoramaLockObject.acquire()
+            if key == ord('s') :
+                filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
+                if cv2.imwrite(filename=filename, img=Script.panorama) :
+                    print(f'Screenshot saved:{filename}')
+                    output_id += 1
+                else : 
+                    print(f'Unable to save screenshot:{filename}')
+    
+            cv2.imshow(window_name, Script.panorama.astype(np.uint8))
+            Script.panoramaLockObject.release()
+
+            # print(f'{time.time() - start_time}')
+
+        # wait for threads to be completed
+
+        while True :
+            completed = True
+            for daemon in Script.daemons:
+                if daemon.thread.is_alive() :
+                    completed = False
+                    break
+
+            if completed :
+                break
+            time.sleep(1)
+
+        # When everything done, release the captures
+        for pin_id, cameraDatum in Script.cameraData.items() :
+            cameraDatum.release()
+
+        time.sleep(5)
+
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    main()
+    Script.main()
