@@ -420,10 +420,10 @@ class Script :
         parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
         parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
         parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
-        parser.add_argument('--stream', action="store_true", help='show pin on each camera feed')
-        parser.add_argument('--udp_address', type=str, default='127.0.0.1', help='set the capture destination folder')
-        parser.add_argument('--udp_port', type=int, default=5000, help='set the capture destination folder')
-        parser.add_argument('--udp_packet_size', type=int, default=1316, help='set the capture destination folder')
+        parser.add_argument('--stream', action="store_true", help='stream content')
+        parser.add_argument('--udp_address', type=str, default='127.0.0.1', help='udp address')
+        parser.add_argument('--udp_port', type=int, default=5000, help='udp port')
+        parser.add_argument('--udp_packet_size', type=int, default=1316, help='sudp packet size')
 
         Script.args = parser.parse_args()
 
