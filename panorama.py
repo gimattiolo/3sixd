@@ -9,13 +9,17 @@ import math
 import threading
 import queue
 
+# os.environ["LD_PRELOAD"] = "/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0"
+
+#import torch
+
+import cupy as cp
+
 import numpy as np
 import cv2
 
 import WaveUtilities
 import CalibrationUtilities
-
-#import torch
 
 two_pi = 2 * math.pi
 
@@ -293,13 +297,20 @@ def panorama_thread_main(delay_sec):
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
 
+    for pin_id in Script.cameraData :
+
+        Script.pixel_coords[pin_id] = cp.array(Script.pixel_coords[pin_id])
+        Script.conditions[pin_id] = cp.array(Script.conditions[pin_id])
+
+    Script.accumulation_normalization = cp.array(Script.accumulation_normalization)
+
     while panorama_thread_main.running :
 
         start_time = time.time()
 
         Script.cameraLockObject.acquire() 
         for pin_id in Script.cameraData :
-            colors[pin_id] = Script.cameraData[pin_id].frame.copy()
+            colors[pin_id] = cp.array(Script.cameraData[pin_id].frame)
         Script.cameraLockObject.release() 
 
         #print(f'Cam:{time.time() - start_time} s')
@@ -307,7 +318,7 @@ def panorama_thread_main(delay_sec):
         start_time = time.time()
 
         # make panorama
-        panorama = np.zeros((Script.H, Script.W, 3), np.float32)
+        panorama = cp.zeros((Script.H, Script.W, 3), np.float32)
         for pin_id in Script.cameraData :
 
             pixel = Script.pixel_coords[pin_id]
@@ -328,7 +339,7 @@ def panorama_thread_main(delay_sec):
 
         panorama *= Script.accumulation_normalization
 
-        Script.panoramas.put(panorama, block=False)
+        Script.panoramas.put(cp.asnumpy(panorama), block=False)
 
         #print(f'Pan:{time.time() - start_time} s')
 
