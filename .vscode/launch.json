@@ -66,7 +66,7 @@
             "program": "~/gits/3sixd/panorama.py",
             "console": "integratedTerminal",
             "args": [
-                "--show_pin",
+                //"--show_pin",
                 "--path", "~/gits/3sixd/panorama_out",
                 "--intrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--extrinsic_path", "~/gits/3sixd/calibration_data3",

@@ -851,8 +851,8 @@ class Script :
             time.sleep(1)
 
         # When everything done, release the captures
-        for pin_id, cameraDatum in Script.cameraData.items() :
-            cameraDatum.release()
+        for pin_id in Script.cameraData :
+            Script.cameraData[pin_id].release()
 
         time.sleep(5)
 
