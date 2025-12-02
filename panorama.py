@@ -7,7 +7,7 @@ import time
 import shutil
 import math
 import threading
-
+import queue
 
 import numpy as np
 import cv2
@@ -287,6 +287,7 @@ def panorama_thread_main(delay_sec):
     print(f"{panorama_thread_main.name} starting...")
 
     colors = {}
+
     while panorama_thread_main.running :
 
         start_time = time.time()
@@ -301,9 +302,7 @@ def panorama_thread_main(delay_sec):
         start_time = time.time()
 
         # make panorama
-        Script.panoramaLockObject.acquire() 
-
-        Script.panorama.fill(0.0)
+        panorama = np.zeros((Script.H, Script.W, 3), np.float32)
         for pin_id in Script.cameraData :
 
             pixel = Script.pixel_coords[pin_id]
@@ -319,12 +318,13 @@ def panorama_thread_main(delay_sec):
 
             #############
 
-            Lerp_vectorized(0.0, color, Script.conditions[pin_id], Script.panorama)
-        Script.panorama[:,:,0] *= Script.accumulation_normalization
-        Script.panorama[:,:,1] *= Script.accumulation_normalization
-        Script.panorama[:,:,2] *= Script.accumulation_normalization
-        
-        Script.panoramaLockObject.release() 
+            Lerp_vectorized(0.0, color, Script.conditions[pin_id], panorama)
+            
+        panorama[:,:,0] *= Script.accumulation_normalization
+        panorama[:,:,1] *= Script.accumulation_normalization
+        panorama[:,:,2] *= Script.accumulation_normalization
+
+        Script.panoramas.put(panorama, block=False)
 
         #print(f'Pan:{time.time() - start_time} s')
 
@@ -432,12 +432,12 @@ class Script :
         ext = '.png'
 
         # width, height
-        H, W = (1080, 1920)
+        Script.H, Script.W = (1080, 1920)
         #H, W = (400, 400)
 
-        size_default = (H,W) 
+        size_default = (Script.H,Script.W) 
 
-        Script.empty_frame = np.zeros((H, W, 3), dtype=np.float32)
+        Script.empty_frame = np.zeros((Script.H, Script.W, 3), dtype=np.float32)
 
         Script.empty_frame[:, :, 2] = 255.0 
 
@@ -487,8 +487,8 @@ class Script :
             cameraDatum.frame = Script.empty_frame.copy()
         # create views in the window
 
-        Script.panorama = np.zeros((H, W, 3), np.float32)
-
+        Script.panoramas = queue.Queue(maxsize=0)
+        
         running = True
         if SaveMode == 0 :
             pass
@@ -686,7 +686,7 @@ class Script :
         Script.pixel_coords= {}
         Script.conditions = {}
 
-        num_acculations = np.zeros((H,W), dtype=np.float32)
+        num_acculations = np.zeros((Script.H,Script.W), dtype=np.float32)
 
         for pin_id, cameraDatum in Script.cameraData.items() :
 
@@ -724,15 +724,15 @@ class Script :
             # right handed
             ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
             ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
-            ps = np.reshape(ps[0:2, :], (2, H, W))
+            ps = np.reshape(ps[0:2, :], (2, Script.H, Script.W))
             #2,H,W -> H,W,2
             ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
 
             pixel_x = ps[:, :, 0]
             pixel_y = ps[:, :, 1]
 
-            mask_x = (0 <= pixel_x) & (pixel_x < W)
-            mask_y = (0 <= pixel_y) & (pixel_y < H)
+            mask_x = (0 <= pixel_x) & (pixel_x < Script.W)
+            mask_y = (0 <= pixel_y) & (pixel_y < Script.H)
             condition = mask_x & mask_y
 
             num_acculations += condition
@@ -754,7 +754,7 @@ class Script :
 
         Script.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
 
-        ray_inW = np.reshape(ray_inW, (3, H, W))
+        ray_inW = np.reshape(ray_inW, (3, Script.H, Script.W))
         ray_inW = np.transpose(ray_inW, (1, 2, 0))
 
         output_id = 0
@@ -769,37 +769,38 @@ class Script :
         Script.cameraLockObject = threading.Lock()
         Script.panoramaLockObject = threading.Lock()
 
-        fps = 60.0
-        delta_time_sec = 1.0 / fps
+        delta_time_sec_30fps = 1.0 / 30.0
+        delta_time_sec_60fps = 1.0 / 60.0
+        zero_delta_time_sec = 0.0
 
         # Create threads
+        Script.daemons = []
 
         camera_daemon = Daemon()
         camera_daemon.main = camera_thread_main
-        camera_daemon.thread = threading.Thread(target=camera_daemon.main, args=(delta_time_sec,), daemon=True)
+        camera_daemon.thread = threading.Thread(target=camera_daemon.main, args=(delta_time_sec_60fps,), daemon=True)
         camera_daemon.main.name = f'CameraThread'
         camera_daemon.main.running = True
+        Script.daemons.append(camera_daemon)
 
         panorama_daemon = Daemon()
         panorama_daemon.main = panorama_thread_main
-        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(delta_time_sec,), daemon=True)
+        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec,), daemon=True)
         panorama_daemon.main.name = f'PanoramaThread'
         panorama_daemon.main.running = True
-        # Start threads
-        Script.daemons = [ camera_daemon, panorama_daemon ] 
+        Script.daemons.append(panorama_daemon)
 
         # Start threads
         for daemon in Script.daemons :      
             daemon.thread.start()
 
         #in msec
-        waitKeyPeriod_msec = int(delta_time_sec * 1000.0)
+        waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
 
         while running :
 
             key = cv2.waitKey(waitKeyPeriod_msec)
             # if cv2.waitKey(waitKeyPeriod) & 0xFF == ord('q') :
-
 
             if key == ord('q') :#or not window_visible:
                 for daemon in Script.daemons :
@@ -817,13 +818,19 @@ class Script :
 
             #start_time = time.time()
             # save screenshot
+
+            panorama =  None
             
+            try :
+                #print(f'queue_size={Script.panoramas.qsize()}')
+                panorama = Script.panoramas.get(block=False)
+            except Exception :
+                continue
+
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
 
-                Script.panoramaLockObject.acquire()
-                ret = cv2.imwrite(filename=filename, img=Script.panorama)
-                Script.panoramaLockObject.release()
+                ret = cv2.imwrite(filename=filename, img=panorama)
 
                 if ret :
                     print(f'Screenshot saved:{filename}')
@@ -831,9 +838,7 @@ class Script :
                 else : 
                     print(f'Unable to save screenshot:{filename}')
     
-            Script.panoramaLockObject.acquire()
-            cv2.imshow(window_name, Script.panorama.astype(np.uint8))
-            Script.panoramaLockObject.release()
+            cv2.imshow(window_name, panorama.astype(np.uint8))
 
             #print(f'{time.time() - start_time}')
 
@@ -854,7 +859,7 @@ class Script :
         for pin_id in Script.cameraData :
             Script.cameraData[pin_id].release()
 
-        time.sleep(5)
+        time.sleep(1)
 
         cv2.destroyAllWindows()
 
