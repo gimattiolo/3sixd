@@ -421,7 +421,10 @@ class Script :
         parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
         parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
         parser.add_argument('--stream', action="store_true", help='show pin on each camera feed')
-            
+        parser.add_argument('--udp_address', type=str, default='127.0.0.1', help='set the capture destination folder')
+        parser.add_argument('--udp_port', type=int, default=5000, help='set the capture destination folder')
+        parser.add_argument('--udp_packet_size', type=int, default=1316, help='set the capture destination folder')
+
         Script.args = parser.parse_args()
 
         assert(len(Script.args.pairs) == len(Script.args.flip_methods))
@@ -821,31 +824,20 @@ class Script :
 
         if Script.args.stream :
             # UDP destination address and port
-            udp_address = '127.0.0.1'  # Use your desired IP address (e.g., '192.168.1.100')
-            udp_port = 5000
-
-
-            # udp_url = f'udp://{udp_address}:{udp_port}'
-            #rtmp_url = "rtmp://your-rtmp-server/live/your-stream-key"
-            #url=f'rtp://{udp_address}:{udp_port}'
-            url = 'udp://127.0.0.1:5000?pkt_size=1316'
-            # packet_size=1316
-            # packet_size_str = f'?pkt_size={packet_size}'
+            url=f'udp://{Script.args.udp_address}:{Script.args.udp_port}?pkt_size={Script.args.udp_packet_size}'
             print(f'{url=}')
-            # print(f'{packet_size_str=}')
-
             # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
 
             process = (
                 ffmpeg
-                # .input('/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
+                # .input(
+                #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
                 #        stream_loop=-1
                 #     )
                 .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
                 #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
                 .output(
                     f'{url}',                 
-                    # format='rtp',
                     vcodec='libx264', # Or 'copy' if input is already H.264
                     format='mpegts',  # Or 'h264' if streaming raw H.264
                     #preset='ultrafast', 
