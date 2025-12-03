@@ -290,8 +290,8 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
-def encoding_thread_main(delay_sec):
-    print(f"{encoding_thread_main.name} starting...")
+def encoding_main(daemon, delay_sec):
+    print(f"{daemon.name} starting...")
 
     # UDP destination address and port
     url=f'udp://{Script.args.udp_address}:{Script.args.udp_port}?pkt_size={Script.args.udp_packet_size}'
@@ -360,7 +360,6 @@ def encoding_thread_main(delay_sec):
     #     'ffmpeg', '-y', "-i", "-", 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
     # ]
 
-
     # process = subprocess.Popen(
     #         ffmpeg_command,
     #         stdin=subprocess.PIPE,
@@ -368,10 +367,7 @@ def encoding_thread_main(delay_sec):
     #         # stderr=subprocess.PIPE # Optional: capture stderr for error handling
         # )
 
-
-
-
-    while encoding_thread_main.running :
+    while daemon.running :
 
         try :
             #print(f'queue_size={Script.panoramas.qsize()}')
@@ -385,10 +381,10 @@ def encoding_thread_main(delay_sec):
     process.stdin.close()
     process.wait()
 
-    print(f"{encoding_thread_main.name} done.")
+    print(f"{daemon.name} done.")
 
-def panorama_thread_main(delay_sec):
-    print(f"{panorama_thread_main.name} starting...")
+def panorama_main(daemon, delay_sec):
+    print(f"{daemon.name} starting...")
 
     colors = {}
 
@@ -402,7 +398,7 @@ def panorama_thread_main(delay_sec):
 
     Script.accumulation_normalization = cp.array(Script.accumulation_normalization)
 
-    while panorama_thread_main.running :
+    while daemon.running :
 
         start_time = time.time()
 
@@ -446,10 +442,10 @@ def panorama_thread_main(delay_sec):
 
         time.sleep(delay_sec)
 
-    print(f"{panorama_thread_main.name} done.")
+    print(f"{daemon.name} done.")
 
-def camera_thread_main(delay_sec):
-    print(f"{camera_thread_main.name} starting...")
+def camera_main(daemon, delay_sec):
+    print(f"{daemon.name} starting...")
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -458,7 +454,7 @@ def camera_thread_main(delay_sec):
     thickness              = 10
     lineType               = cv2.LINE_8
 
-    while camera_thread_main.running :
+    while daemon.running :
 
         camerasOK = True
 
@@ -497,7 +493,7 @@ def camera_thread_main(delay_sec):
 
         time.sleep(delay_sec)
 
-    print(f"{camera_thread_main.name} done.")
+    print(f"{daemon.name} done.")
 
 class Daemon :
     def reset(self) :
@@ -505,8 +501,12 @@ class Daemon :
         self.main = ''
 
     def __init__(self) :
-        self.reset()    
+        self.reset() 
 
+    def __init__(self, name, main, delta_time_sec) :
+        self.main = main
+        self.thread = threading.Thread(target=main, args=(self, delta_time_sec,), daemon=True)
+        self.name = name
 
 class Script :
     def main():
@@ -901,30 +901,19 @@ class Script :
         # Create threads
         Script.daemons = []
 
-        camera_daemon = Daemon()
-        camera_daemon.main = camera_thread_main
-        camera_daemon.thread = threading.Thread(target=camera_daemon.main, args=(delta_time_sec_60fps,), daemon=True)
-        camera_daemon.main.name = f'CameraDaemon'
-        camera_daemon.main.running = True
+        camera_daemon = Daemon('CameraDaemon', camera_main, delta_time_sec_60fps)
         Script.daemons.append(camera_daemon)
 
-        panorama_daemon = Daemon()
-        panorama_daemon.main = panorama_thread_main
-        panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec,), daemon=True)
-        panorama_daemon.main.name = f'PanoramaDaemon'
-        panorama_daemon.main.running = True
+        panorama_daemon = Daemon('PanoramaDaemon', panorama_main, zero_delta_time_sec)
         Script.daemons.append(panorama_daemon)
 
         if Script.args.stream :
-            encoding_daemon = Daemon()
-            encoding_daemon.main = encoding_thread_main
-            encoding_daemon.thread = threading.Thread(target=encoding_daemon.main, args=(zero_delta_time_sec,), daemon=True)
-            encoding_daemon.main.name = f'EncodingDaemon'
-            encoding_daemon.main.running = True
+            encoding_daemon = Daemon('EncodingDaemon', encoding_main, zero_delta_time_sec)
             Script.daemons.append(encoding_daemon)
 
         # Start threads
-        for daemon in Script.daemons :      
+        for daemon in Script.daemons :  
+            daemon.running = True    
             daemon.thread.start()
 
         #in msec
@@ -937,7 +926,7 @@ class Script :
 
             if key == ord('q') :#or not window_visible:
                 for daemon in Script.daemons :
-                    daemon.main.running = False
+                    daemon.running = False
                 running = False
                 break
 
