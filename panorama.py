@@ -290,6 +290,103 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
+def encoding_thread_main(delay_sec):
+    print(f"{encoding_thread_main.name} starting...")
+
+    # UDP destination address and port
+    url=f'udp://{Script.args.udp_address}:{Script.args.udp_port}?pkt_size={Script.args.udp_packet_size}'
+    print(f'{url=}')
+    # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
+
+    input_file='/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4'
+    output_file='/home/gimattiolo/gits/3sixd/output.mp4'
+
+    # original streaming working
+    process = (
+        ffmpeg
+        # .input(
+        #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
+        #        stream_loop=-1
+        #     )
+        .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+        #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
+        .output(
+            f'{url}',                 
+            vcodec='libx264', # Or 'copy' if input is already H.264
+            format='mpegts',  # Or 'h264' if streaming raw H.264
+            #preset='ultrafast', 
+            #tune='zerolatency',
+            #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
+            #'x264opts': 'bframes=0:weightp=0'
+            #keyint='30', 
+            #scenecut='0',
+            # format='rawvideo', 
+            # pix_fmt='rgb24',
+            )
+        .overwrite_output()
+        .run_async(pipe_stdin=True)
+    )
+
+    # stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+    # split_input = stream.split()
+
+    # output_udp = split_input[0].output(
+    #     url, 
+    #     vcodec='libx264', 
+    #     format='mpegts', 
+    #     preset='ultrafast', 
+    #     tune='zerolatency'
+    # )
+
+    # output_file = split_input[1].output(stream,
+    #     '/home/gimattiolo/gits/3sixd/output.mp4', 
+    #     format="mp4",
+    #     #vcodec="copy"  # Copy codecs without re-encoding
+    # ).overwrite_output()
+
+    # process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
+
+    # ffmpeg_command = [
+    #     'ffmpeg', '-y', 
+    #     '-i', f'{input_file}',
+    #     '-c:v','libx264', 
+    #     '-b:v', '2M', 
+    #     '-r', '30',
+    #     '-c:a', 'aac', 
+    #     '-b:a', '128k', f'{output_file}',
+    # ]
+
+    # ffmpeg_command = [
+    #     'ffmpeg', '-y', "-i", "-", 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
+    # ]
+
+
+    # process = subprocess.Popen(
+    #         ffmpeg_command,
+    #         stdin=subprocess.PIPE,
+    #         # stdout=subprocess.PIPE,
+    #         # stderr=subprocess.PIPE # Optional: capture stderr for error handling
+        # )
+
+
+
+
+    while encoding_thread_main.running :
+
+        try :
+            #print(f'queue_size={Script.panoramas.qsize()}')
+            bytes = Script.bytes.get(block=False)
+            process.stdin.write(bytes)
+        except Exception :
+            pass
+
+        time.sleep(delay_sec)
+
+    process.stdin.close()
+    process.wait()
+
+    print(f"{encoding_thread_main.name} done.")
+
 def panorama_thread_main(delay_sec):
     print(f"{panorama_thread_main.name} starting...")
 
@@ -343,12 +440,13 @@ def panorama_thread_main(delay_sec):
         panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
 
         Script.panoramas.put(panorama_numpy, block=False)
+        Script.bytes.put(panorama_numpy.tobytes(), block=False)
 
         #print(f'Pan:{time.time() - start_time} s')
 
         time.sleep(delay_sec)
 
-    print(f"{panorama_thread_main.name} finished.")
+    print(f"{panorama_thread_main.name} done.")
 
 def camera_thread_main(delay_sec):
     print(f"{camera_thread_main.name} starting...")
@@ -399,7 +497,7 @@ def camera_thread_main(delay_sec):
 
         time.sleep(delay_sec)
 
-    print(f"{camera_thread_main.name} finished.")
+    print(f"{camera_thread_main.name} done.")
 
 class Daemon :
     def reset(self) :
@@ -509,6 +607,7 @@ class Script :
         # create views in the window
 
         Script.panoramas = queue.Queue(maxsize=0)
+        Script.bytes = queue.Queue(maxsize=0)
         
         running = True
         if SaveMode == 0 :
@@ -797,7 +896,7 @@ class Script :
 
         delta_time_sec_30fps = 1.0 / 30.0
         delta_time_sec_60fps = 1.0 / 60.0
-        zero_delta_time_sec = 0.0
+        zero_delta_time_sec  = 1.0 / 1000.0
 
         # Create threads
         Script.daemons = []
@@ -805,16 +904,24 @@ class Script :
         camera_daemon = Daemon()
         camera_daemon.main = camera_thread_main
         camera_daemon.thread = threading.Thread(target=camera_daemon.main, args=(delta_time_sec_60fps,), daemon=True)
-        camera_daemon.main.name = f'CameraThread'
+        camera_daemon.main.name = f'CameraDaemon'
         camera_daemon.main.running = True
         Script.daemons.append(camera_daemon)
 
         panorama_daemon = Daemon()
         panorama_daemon.main = panorama_thread_main
         panorama_daemon.thread = threading.Thread(target=panorama_daemon.main, args=(zero_delta_time_sec,), daemon=True)
-        panorama_daemon.main.name = f'PanoramaThread'
+        panorama_daemon.main.name = f'PanoramaDaemon'
         panorama_daemon.main.running = True
         Script.daemons.append(panorama_daemon)
+
+        if Script.args.stream :
+            encoding_daemon = Daemon()
+            encoding_daemon.main = encoding_thread_main
+            encoding_daemon.thread = threading.Thread(target=encoding_daemon.main, args=(zero_delta_time_sec,), daemon=True)
+            encoding_daemon.main.name = f'EncodingDaemon'
+            encoding_daemon.main.running = True
+            Script.daemons.append(encoding_daemon)
 
         # Start threads
         for daemon in Script.daemons :      
@@ -822,82 +929,6 @@ class Script :
 
         #in msec
         waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
-
-        if Script.args.stream :
-            # UDP destination address and port
-            url=f'udp://{Script.args.udp_address}:{Script.args.udp_port}?pkt_size={Script.args.udp_packet_size}'
-            print(f'{url=}')
-            # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
-
-            input_file='/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4'
-            output_file='/home/gimattiolo/gits/3sixd/output.mp4'
-
-            # original streaming working
-            process = (
-                ffmpeg
-                # .input(
-                #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
-                #        stream_loop=-1
-                #     )
-                .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
-                #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
-                .output(
-                    f'{url}',                 
-                    vcodec='libx264', # Or 'copy' if input is already H.264
-                    format='mpegts',  # Or 'h264' if streaming raw H.264
-                    #preset='ultrafast', 
-                    #tune='zerolatency',
-                    #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
-                    #'x264opts': 'bframes=0:weightp=0'
-                    #keyint='30', 
-                    #scenecut='0',
-                    # format='rawvideo', 
-                    # pix_fmt='rgb24',
-                    )
-                .overwrite_output()
-                .run_async(pipe_stdin=True)
-            )
-
-            # stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
-            # split_input = stream.split()
-
-            # output_udp = split_input[0].output(
-            #     url, 
-            #     vcodec='libx264', 
-            #     format='mpegts', 
-            #     preset='ultrafast', 
-            #     tune='zerolatency'
-            # )
-
-            # output_file = split_input[1].output(stream,
-            #     '/home/gimattiolo/gits/3sixd/output.mp4', 
-            #     format="mp4",
-            #     #vcodec="copy"  # Copy codecs without re-encoding
-            # ).overwrite_output()
-
-            # process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
-
-            # ffmpeg_command = [
-            #     'ffmpeg', '-y', 
-            #     '-i', f'{input_file}',
-            #     '-c:v','libx264', 
-            #     '-b:v', '2M', 
-            #     '-r', '30',
-            #     '-c:a', 'aac', 
-            #     '-b:a', '128k', f'{output_file}',
-            # ]
-
-            # ffmpeg_command = [
-            #     'ffmpeg', '-y', "-i", "-", 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
-            # ]
-
-
-            # process = subprocess.Popen(
-            #         ffmpeg_command,
-            #         stdin=subprocess.PIPE,
-            #         # stdout=subprocess.PIPE,
-            #         # stderr=subprocess.PIPE # Optional: capture stderr for error handling
-                # )
 
         while running :
 
@@ -929,9 +960,6 @@ class Script :
             except Exception :
                 continue
 
-            if Script.args.stream :
-                process.stdin.write(panorama.tobytes())
-
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
 
@@ -959,10 +987,6 @@ class Script :
             if completed :
                 break
             time.sleep(1)
-
-        if Script.args.stream :
-            process.stdin.close()
-            process.wait()
 
         # When everything done, release the captures
         for pin_id in Script.cameraData :
