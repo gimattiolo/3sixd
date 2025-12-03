@@ -119,20 +119,20 @@ def Angle2Dir_vectorized(gamma_theta) :
     Z = np.sin(theta) * np.cos(gamma)
     return np.stack((X,Y,Z), axis=0)
 
-def UV2Angle(uv) :
+def UV2Angle(uv, alpha) :
     gamma_theta = np.zeros((2,1), dtype=np.float32)
     #u=0 -> gamma=-pi, u=1 -> gamma=pi
     gamma_theta.x = math.pi * (2.0 * uv.x - 1.0)
     #v=0 -> theta=pi, v=1 -> theta=0
-    gamma_theta.y = math.pi * (1.0 - uv.y) 
+    gamma_theta.y = (2.0 * alpha - math.pi) * uv.y + (math.pi - alpha)
     return gamma_theta
 
-def UV2Angle_vectorized(uv) :
+def UV2Angle_vectorized(uv, alpha) :
     gamma_theta = np.zeros(uv.shape, dtype=np.float32)
     #u=0 -> gamma=-pi, u=1 -> gamma=pi
     gamma_theta[:, :, 0] = math.pi * (2.0 * uv[:, :, 0] - 1.0)     
     #v=0 -> theta=pi, v=1 -> theta=0
-    gamma_theta[:, :, 1] = math.pi * (1.0 - uv[:, :, 1]) 
+    gamma_theta[:, :, 1] = (2.0 * alpha - math.pi) * uv[:, :, 1] + (math.pi - alpha) 
     return gamma_theta
 
 def Lerp(a0, a1, x) :
@@ -521,7 +521,8 @@ class Script :
         parser.add_argument('--stream', action="store_true", help='stream content')
         parser.add_argument('--udp_address', type=str, default='127.0.0.1', help='udp address')
         parser.add_argument('--udp_port', type=int, default=5000, help='udp port')
-        parser.add_argument('--udp_packet_size', type=int, default=1316, help='sudp packet size')
+        parser.add_argument('--udp_packet_size', type=int, default=1316, help='udp packet size')
+        parser.add_argument('--alpha', type=float, default=0.0, help='the vertical angle in polar coordinates will be mapped to [alpha, pi - alpha]')
 
         Script.args = parser.parse_args()
 
@@ -798,7 +799,7 @@ class Script :
         window_visible = True
 
         i_uv = MakeUV(size_default)
-        gammaTheta = UV2Angle_vectorized(i_uv)
+        gammaTheta = UV2Angle_vectorized(i_uv, Script.args.alpha)
         ray_inW = Angle2Dir_vectorized(gammaTheta)
         ray_inW = ray_inW.reshape((3,-1))    
 

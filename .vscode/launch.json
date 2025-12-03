@@ -71,6 +71,7 @@
                 "--intrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--extrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--stream",
+                "--alpha", "1.046666667",
                 // to make the pairs cyclical explicitely re-add first camera pin
                  "--pairs", "5", "0", "2", "4", "1", "3", "5",
                 //"--pairs", "1", "3", "5",
