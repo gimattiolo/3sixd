@@ -314,8 +314,8 @@ def encoding_main(daemon, delay_sec):
             f'{url}',                 
             vcodec='libx264', # Or 'copy' if input is already H.264
             format='mpegts',  # Or 'h264' if streaming raw H.264
-            #preset='ultrafast', 
-            #tune='zerolatency',
+            preset='ultrafast', 
+            tune='zerolatency',
             #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
             #'x264opts': 'bframes=0:weightp=0'
             #keyint='30', 
@@ -323,7 +323,6 @@ def encoding_main(daemon, delay_sec):
             # format='rawvideo', 
             # pix_fmt='rgb24',
             )
-        .overwrite_output()
         .run_async(pipe_stdin=True)
     )
 
@@ -904,11 +903,11 @@ class Script :
         camera_daemon = Daemon('CameraDaemon', camera_main, delta_time_sec_60fps)
         Script.daemons.append(camera_daemon)
 
-        panorama_daemon = Daemon('PanoramaDaemon', panorama_main, zero_delta_time_sec)
+        panorama_daemon = Daemon('PanoramaDaemon', panorama_main, delta_time_sec_60fps)
         Script.daemons.append(panorama_daemon)
 
         if Script.args.stream :
-            encoding_daemon = Daemon('EncodingDaemon', encoding_main, zero_delta_time_sec)
+            encoding_daemon = Daemon('EncodingDaemon', encoding_main, delta_time_sec_60fps)
             Script.daemons.append(encoding_daemon)
 
         # Start threads
