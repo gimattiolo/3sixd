@@ -8,6 +8,7 @@ import shutil
 import math
 import threading
 import queue
+import subprocess
 
 # os.environ["LD_PRELOAD"] = "/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0"
 
@@ -828,6 +829,10 @@ class Script :
             print(f'{url=}')
             # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
 
+            input_file='/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4'
+            output_file='/home/gimattiolo/gits/3sixd/output.mp4'
+
+            # original streaming working
             process = (
                 ffmpeg
                 # .input(
@@ -852,6 +857,47 @@ class Script :
                 .overwrite_output()
                 .run_async(pipe_stdin=True)
             )
+
+            # stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+            # split_input = stream.split()
+
+            # output_udp = split_input[0].output(
+            #     url, 
+            #     vcodec='libx264', 
+            #     format='mpegts', 
+            #     preset='ultrafast', 
+            #     tune='zerolatency'
+            # )
+
+            # output_file = split_input[1].output(stream,
+            #     '/home/gimattiolo/gits/3sixd/output.mp4', 
+            #     format="mp4",
+            #     #vcodec="copy"  # Copy codecs without re-encoding
+            # ).overwrite_output()
+
+            # process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
+
+            # ffmpeg_command = [
+            #     'ffmpeg', '-y', 
+            #     '-i', f'{input_file}',
+            #     '-c:v','libx264', 
+            #     '-b:v', '2M', 
+            #     '-r', '30',
+            #     '-c:a', 'aac', 
+            #     '-b:a', '128k', f'{output_file}',
+            # ]
+
+            # ffmpeg_command = [
+            #     'ffmpeg', '-y', "-i", "-", 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
+            # ]
+
+
+            # process = subprocess.Popen(
+            #         ffmpeg_command,
+            #         stdin=subprocess.PIPE,
+            #         # stdout=subprocess.PIPE,
+            #         # stderr=subprocess.PIPE # Optional: capture stderr for error handling
+                # )
 
         while running :
 
