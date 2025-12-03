@@ -302,48 +302,59 @@ def encoding_main(daemon, delay_sec):
     output_file='/home/gimattiolo/gits/3sixd/output.mp4'
 
     # original streaming working
-    process = (
-        ffmpeg
-        # .input(
-        #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
-        #        stream_loop=-1
-        #     )
-        .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
-        #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
-        .output(
-            f'{url}',                 
-            vcodec='libx264', # Or 'copy' if input is already H.264
-            format='mpegts',  # Or 'h264' if streaming raw H.264
-            preset='ultrafast', 
-            tune='zerolatency',
-            #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
-            #'x264opts': 'bframes=0:weightp=0'
-            #keyint='30', 
-            #scenecut='0',
-            # format='rawvideo', 
-            # pix_fmt='rgb24',
-            )
-        .run_async(pipe_stdin=True)
-    )
-
-    # stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
-    # split_input = stream.split()
-
-    # output_udp = split_input[0].output(
-    #     url, 
-    #     vcodec='libx264', 
-    #     format='mpegts', 
-    #     preset='ultrafast', 
-    #     tune='zerolatency'
+    # process = (
+    #     ffmpeg
+    #     # .input(
+    #     #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
+    #     #        stream_loop=-1
+    #     #     )
+    #     .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+    #     #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
+    #     .output(
+    #         f'{url}',                 
+    #         vcodec='libx264', # Or 'copy' if input is already H.264
+    #         format='mpegts',  # Or 'h264' if streaming raw H.264
+    #         preset='ultrafast', 
+    #         tune='zerolatency',
+    #         #sdp_file='/home/gimattiolo/gits/3sixd/my_rtp.sdp'
+    #         #'x264opts': 'bframes=0:weightp=0'
+    #         #keyint='30', 
+    #         #scenecut='0',
+    #         # format='rawvideo', 
+    #         # pix_fmt='rgb24',
+    #         )
+    #     .run_async(pipe_stdin=True)
     # )
 
-    # output_file = split_input[1].output(stream,
-    #     '/home/gimattiolo/gits/3sixd/output.mp4', 
-    #     format="mp4",
-    #     #vcodec="copy"  # Copy codecs without re-encoding
-    # ).overwrite_output()
+    stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
 
-    # process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
+    if os.path.isfile(Script.args.video_path) :
+        split_input = stream.split()
+        output_udp = split_input[0].output(
+            f'{url}', 
+            vcodec='libx264', 
+            format='mpegts', 
+            preset='ultrafast', 
+            tune='zerolatency'
+        )
+
+        output_file = split_input[1].output(stream,
+            Script.args.video_path, 
+            format="mp4",
+            #vcodec="copy"  # Copy codecs without re-encoding
+        ).overwrite_output()
+
+        process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
+    else :
+        stream = stream.output(
+            f'{url}', 
+            vcodec='libx264', 
+            format='mpegts', 
+            preset='ultrafast', 
+            tune='zerolatency'
+        )
+        process = ffmpeg.run_async(stream, pipe_stdin=True)
+
 
     # ffmpeg_command = [
     #     'ffmpeg', '-y', 
@@ -523,6 +534,7 @@ class Script :
         parser.add_argument('--udp_port', type=int, default=5000, help='udp port')
         parser.add_argument('--udp_packet_size', type=int, default=1316, help='udp packet size')
         parser.add_argument('--alpha', type=float, default=0.0, help='the vertical angle in polar coordinates will be mapped to [alpha, pi - alpha]')
+        parser.add_argument('--video_path', type=str, default='', help='if valid file, the stream will be encoded and saved into a video file')
 
         Script.args = parser.parse_args()
 
