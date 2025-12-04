@@ -68,8 +68,8 @@
             "args": [
                 //"--show_pin",
                 "--path", "~/gits/3sixd/panorama_out",
-                "--intrinsic_paths", "~/gits/3sixd/calibration_data3",
-                "--extrinsic_paths", "~/gits/3sixd/calibration_data3",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data3",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--stream",
                 "--alpha", "1.046666667",
                 //"--video_path", "/home/gimattiolo/gits/3sixd/output.mp4",

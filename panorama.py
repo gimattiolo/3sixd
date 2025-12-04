@@ -135,6 +135,94 @@ def UV2Angle_vectorized(uv, alpha) :
     gamma_theta[:, :, 1] = (2.0 * alpha - math.pi) * uv[:, :, 1] + (math.pi - alpha) 
     return gamma_theta
 
+def Angle2UV(gamma_theta_input, offset_rad) :
+    uv = np.zeros((2,1), dtype=np.float32)
+
+    gamma_theta = np.copy(gamma_theta_input)
+
+    gamma_theta.x += offset_rad
+
+    gamma_theta.x = Lerp(gamma_theta.x, gamma_theta.x - two_pi, gamma_theta.x > two_pi)
+				
+    uv.x = gamma_theta.x / two_pi
+
+#ifdef PXR_FLIP_PORTAL_U
+    uv.x = 1.0 - uv.x
+#endif
+    uv.y = gamma_theta.y / math.pi
+           
+    return uv
+
+def Angle2UV_vectorized(gamma_theta_input, offset_rad) :
+    uv = np.zeros(gamma_theta_input.shape, dtype=np.float32)
+
+    gamma_theta = np.copy(gamma_theta_input)
+
+    gamma_theta[:, :, 0] += offset_rad
+
+    condition = gamma_theta[:, :, 0] > two_pi
+    condition = condition.astype(np.float32)
+    gamma_theta[:, :, 0] = Lerp(gamma_theta[:, :, 0], gamma_theta[:, :, 0] - two_pi, condition)
+				
+    uv[:, :, 0] = gamma_theta[:, :, 0] / two_pi
+
+#ifdef PXR_FLIP_PORTAL_U
+    uv[:, :, 0] = 1.0 - uv[:, :, 0]
+#endif
+    uv[:, :, 1] = gamma_theta[:, :, 1] / math.pi
+           
+    return uv
+
+def Dir2Angle(dir_input) :
+    dir = np.copy(dir_input)
+    # x: [0, UNITY_TWO_PI]
+    # y: [0, UNITY_PI] 
+    gamma_theta = np.zeros((2,1), dtype=np.float32)
+    gamma_theta.y = math.acos(dir.y)
+
+    dir.y = 0.0
+    _Normalize(dir)
+
+    gamma_theta.x = math.acos(dir.x)
+    gamma_theta.x = Lerp(gamma_theta.x, two_pi - gamma_theta.x, dir.z < 0.0)
+
+    return gamma_theta
+
+def Dir2Angle_vectorized(dir_input) :
+
+    dir = np.copy(dir_input)
+
+    # x: [0, UNITY_TWO_PI]
+    # y: [0, UNITY_PI] 
+    shape = dir.shape
+
+    gamma_theta = np.zeros((shape[0], shape[1], 2), dtype=np.float32)
+    gamma_theta[:, :, 1] = math.acos(dir[:, :, 1])
+
+    dir[:, :, 1] = 0.0
+    _Normalize_vectorized(dir)
+
+    gamma_theta[:, :, 0] = np.acos(dir[:, :, 0])
+
+    condition = dir[:, :, 2] < 0.0
+    condition = condition.astype(np.float32)
+
+    gamma_theta[:, :, 0] = Lerp(gamma_theta[:, :, 0], two_pi - gamma_theta[:, :, 0], condition)
+
+    return gamma_theta
+
+def _Normalize_vectorized(v) :
+    norm = np.linalg.norm(v, ord=None, axis=2, keepdims=False)
+    v[:,:,0] /= norm
+    v[:,:,1] /= norm
+    v[:,:,2] /= norm
+
+def _Normalize(v) :
+    norm = np.linalg.norm(v, ord=None, axis=2, keepdims=False)
+    v.x /= norm
+    v.y /= norm
+    v.z /= norm
+
 def Lerp(a0, a1, x) :
     return a0 + (a1 - a0) * x
 
