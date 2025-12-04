@@ -33,12 +33,33 @@ def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZon
 # see https://docs.opencv.org/4.x/da/d0d/tutorial_camera_calibration_pattern.html
 # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_calib3d/py_calibration/py_calibration.html
 # see https://docs.opencv.org/master/dc/dbb/tutorial_py_calibration.html
-def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, useIntrinsicsGuess, intrinsicMatrix, distortion, debug_path) :
+def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntrinsicsGuess, intrinsicMatrix, distortion) :
     # Array to store image points from all the images.
     imagePoints = [] # 2d points in image plane.
 
-    for i in range(0, len(images)) :
-        image, image_path = images[i]
+    image_size = None
+
+    debug_paths = {}
+
+    for i in range(0, len(imageFiles)) :
+        image_path = imageFiles[i]
+
+        debug_path = os.path.join(os.path.dirname(image_path), 'debug')
+        if not debug_path in debug_paths :
+            shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
+            os.mkdir(debug_path)
+            debug_paths[debug_path] = None
+
+        image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+
+        if image is None :
+            print(f'Unable to load {image_path}')
+            continue
+
+        if image_size is None :
+            # we store channels, width and height
+            image_size = image.shape[::-1]
+
         print(f'Processing image {i} {image_path}')
         success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path)
         if not success:
@@ -65,7 +86,7 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, 
 
     numImages = max(1, len(imagePoints))
        
-    size = (imageSize[1], imageSize[2])
+    size = (image_size[1], image_size[2])
 
     print(f'Guess flag enabled : {useIntrinsicsGuess}')
        
@@ -87,7 +108,7 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, images, imageSize, 
     mean_error /= numImages
     print(f"Mean reprojection error : {mean_error}")
     
-    return error, intrinsicMatrix, distortion, mean_error, imagePoints
+    return error, intrinsicMatrix, distortion, mean_error, imagePoints, image_size
 
 def StereoCalibration(objectPoints, imagePoints1, imagePoints2, IntrinsicMatrix1, Distortion1, IntrinsicMatrix2, Distortion2, imageSize) :
 
@@ -128,72 +149,73 @@ def LoadJsonContent(filename) :
     fileObj.close()
     return jsonContent
 
-def PrepareImages(calibrationPath, fileIndices, debugMaxNumCameraImage):
+def PrepareImages(calibrationPaths, fileIndices, debugMaxNumCameraImage):
     numCameras = len(fileIndices)
-    imagesPerCamera = {}
-    sizesPerCamera = {}
+    imageFilesPerCamera = {}
+    # sizesPerCamera = {}
 
     for i in range(0, numCameras) :
-        imagesPerCamera[ fileIndices[i] ] = []
-        sizesPerCamera[ fileIndices[i] ] = []
+        imageFilesPerCamera[ fileIndices[i] ] = []
+        # sizesPerCamera[ fileIndices[i] ] = []
 
     # sort the entries by pin
-    imagesPerCamera = dict(sorted(imagesPerCamera.items()))
-    sizesPerCamera = dict(sorted(sizesPerCamera.items()))
+    imageFilesPerCamera = dict(sorted(imageFilesPerCamera.items()))
+    #sizesPerCamera = dict(sorted(sizesPerCamera.items()))
 
-    fileList = os.listdir(calibrationPath)
-    for i in range(0, len(fileList)):
-        filename = fileList[i]
-       
-        name, file_extension = os.path.splitext(filename)
-
-        if file_extension.lower() == '.json' :
-            continue
-
-        pin_id = CalibrationUtilities.GetCameraIndex(filename)
-
-        if pin_id == -1 :
-            print(f'Unable to extract camera index from string {filename}')
-            continue
-
-        if not (pin_id in fileIndices):
-            continue
-
-        if len(imagesPerCamera[pin_id]) >= debugMaxNumCameraImage :
-            continue
+    for path in calibrationPaths :
+        fileList = os.listdir(path)
+        for i in range(0, len(fileList)):
+            filename = fileList[i]
         
-        fullFilename = os.path.join(calibrationPath, filename)
-    
-        image = cv2.imread(fullFilename, cv2.IMREAD_COLOR)
-        if image is None :
-            print(f'Unable to load {fullFilename}')
-            continue
+            name, file_extension = os.path.splitext(filename)
+
+            if file_extension.lower() == '.json' :
+                continue
+
+            pin_id = CalibrationUtilities.GetCameraIndex(filename)
+
+            if pin_id == -1 :
+                print(f'Unable to extract camera index from string {filename}')
+                continue
+
+            if not (pin_id in fileIndices):
+                continue
+
+            if len(imageFilesPerCamera[pin_id]) >= debugMaxNumCameraImage :
+                continue
             
-        # we store channels, width and height
-        size = image.shape[::-1]
-        sizesPerCamera[pin_id].append(size)
+            fullFilename = os.path.join(path, filename)
+        
+            # image = cv2.imread(fullFilename, cv2.IMREAD_COLOR)
+            # if image is None :
+            #     print(f'Unable to load {fullFilename}')
+            #     continue
+                
+            # we store channels, width and height
+            # size = image.shape[::-1]
+            # sizesPerCamera[pin_id].append(size)
 
-        print (f'Loading image #{i} {fullFilename} {size} for camera {pin_id}')
-        imagesPerCamera[pin_id].append((image, fullFilename))
+            print (f'Loading image #{i} {fullFilename} for camera {pin_id}')
+            imageFilesPerCamera[pin_id].append(fullFilename)
 
-    for pin_id in sizesPerCamera.keys() :
-        for i in range(1, len(sizesPerCamera[pin_id])) :
-            if sizesPerCamera[pin_id][i] != sizesPerCamera[pin_id][i - 1] :
-                print(f'Camera {pin_id} : image {i} size {sizesPerCamera[pin_id][i]} is different from image {i - 1} size {sizesPerCamera[pin_id][i - 1]}')
-                return
+    # for pin_id in sizesPerCamera.keys() :
+    #     for i in range(1, len(sizesPerCamera[pin_id])) :
+    #         if sizesPerCamera[pin_id][i] != sizesPerCamera[pin_id][i - 1] :
+    #             print(f'Camera {pin_id} : image {i} size {sizesPerCamera[pin_id][i]} is different from image {i - 1} size {sizesPerCamera[pin_id][i - 1]}')
+    #             return
 
-    for pin_id in sizesPerCamera.keys() :
-        if len(imagesPerCamera[pin_id]) == 0 :
-            print(f'No image found in {calibrationPath} for camera {pin_id}')
+    for pin_id in imageFilesPerCamera.keys() :
+        if len(imageFilesPerCamera[pin_id]) == 0 :
+            print(f'No image found in {calibrationPaths} for camera {pin_id}')
 
-    return imagesPerCamera, sizesPerCamera
+    return imageFilesPerCamera#, sizesPerCamera
 
 def main():
     parser = argparse.ArgumentParser('Create calibration data from images')
     parser.add_argument('--intrinsic', action="store_true", help='create intrinsic matrix json file (requires --intrinsicpath)')
-    parser.add_argument('--intrinsic_path', type=str, help='set the intrinsic image capture source folder/data export folder')
+    parser.add_argument('--intrinsic_paths', type=str, nargs='+', help='set the intrinsic image capture source folder/data export folder')
     parser.add_argument('--extrinsic', action="store_true", help='create extrinsic matrix json file (requires both --intrinsicpath and --extrinsicpath)')
-    parser.add_argument('--extrinsic_path', type=str, help='set the extrinsic image capture source folder/data export folder')
+    parser.add_argument('--extrinsic_paths', type=str, nargs='+', help='set the extrinsic image capture source folder/data export folder')
     parser.add_argument('--world_space', action="store_true", help='generate a worldspace transform for each camera')
     parser.add_argument('--world_space_path', type=str, help='set the world space image capture source folder/data export folder')
     parser.add_argument('--file_indices', type=int, nargs='+', help='file camera indices to process')
@@ -203,48 +225,43 @@ def main():
     parser.add_argument('--zero_zone_size', type=int, nargs=2, help='search zone dead region half-size that is ignored when looking for checkerboard gradients')
     parser.add_argument('--max_images', type=int, default=-1, help='maximum number of images to load')
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
-    parser.add_argument('--debug_path', type=str, help='path for debug decorated images')
     parser.add_argument('--use_intrinsics_guess', action="store_true", help='use guess for intrinsics')
+    parser.add_argument('--output_path', type=str, help='output folder for calibration files')
 
     args = parser.parse_args()
-
-    if os.path.exists(args.debug_path) :
-        shutil.rmtree(args.debug_path, ignore_errors=False, onerror=None)
-
-    os.mkdir(args.debug_path)
 
     modeTotals = (1 if args.intrinsic else 0) + (1 if args.extrinsic else 0) + (1 if args.world_space else 0)
     if modeTotals != 1:
         print ('You must run in either --intrinsic, --extrinsic, or --worldspace mode, and not multiple modes at once.')
         sys.exit(1)
 
-    if args.intrinsic and not args.intrinsic_path:
+    if args.intrinsic and not args.intrinsic_paths:
         print ('You must set the --intrinsic_path to run in --intrinsic mode')
         sys.exit(1)
 
-    if args.extrinsic and not (args.intrinsic_path and args.extrinsic_path):
+    if args.extrinsic and not (args.intrinsic_paths and args.extrinsic_paths):
         print ('You must set the --intrinsic_path and --extrinsic_path to run in --extrinsic mode')
         sys.exit(1)
 
-    if args.world_space and not (args.intrinsic_path and args.world_space_path):
+    if args.world_space and not (args.intrinsic_paths and args.world_space_paths):
         print ('You must set the --intrinsicpath and --worldspacepath to run in --worldspace mode')
         sys.exit(1)
 
     genericPath = CalibrationUtilities.GetCalibrationPath()
-    intrinsicPath = genericPath
-    if args.intrinsic_path:
-        intrinsicPath = args.intrinsic_path
-        print(f'Using intrinsic image/data path {intrinsicPath}')
+    intrinsic_paths = [ genericPath ]
+    if args.intrinsic_paths:
+        intrinsic_paths = args.intrinsic_paths
+        print(f'Using intrinsic image/data path {intrinsic_paths}')
 
-    extrinsicPath = genericPath
-    if args.extrinsic_path:
-        extrinsicPath = args.extrinsic_path
-        print(f'Using extrinsic image/data path {extrinsicPath}')
+    extrinsic_paths = [ genericPath ]
+    if args.extrinsic_paths:
+        extrinsic_paths = args.extrinsic_paths
+        print(f'Using extrinsic image/data path {extrinsic_paths}')
 
-    worldSpacePath = genericPath
+    world_space_path = genericPath
     if args.world_space_path:
-        worldSpacePath = args.world_space_path
-        print(f'Using worldspace image/data path {worldSpacePath}')
+        world_space_path = args.world_space_path
+        print(f'Using worldspace image/data path {world_space_path}')
 
     patternSize = CalibrationUtilities.GetPatternSize()
     if args.pattern_size:
@@ -270,16 +287,20 @@ def main():
     
     print(f'Debug Max Num Camera Images {debugMaxNumCameraImage}')
 
-    if args.intrinsic and intrinsicPath and not os.path.exists(intrinsicPath) :
-        print(f'Invalid intrinsic path {intrinsicPath}')
-        sys.exit(1)
+    if args.intrinsic and intrinsic_paths :
+        for path in intrinsic_paths :
+            if not os.path.exists(path) :
+                print(f'Invalid intrinsic path {intrinsic_paths}')
+                sys.exit(1)
 
-    if args.extrinsic and extrinsicPath and not os.path.exists(extrinsicPath) :
-        print(f'Invalid extrinsic path {extrinsicPath}')
-        sys.exit(1)
+    if args.extrinsic and extrinsic_paths :
+        for path in intrinsic_paths :
+            if not os.path.exists(path) :
+                print(f'Invalid extrinsic path {path}')
+                sys.exit(1)
 
-    if args.world_space and worldSpacePath and not os.path.exists(worldSpacePath) :
-        print(f'Invalid worldspace path {worldSpacePath}')
+    if args.world_space and world_space_path and not os.path.exists(world_space_path) :
+        print(f'Invalid worldspace path {world_space_path}')
         sys.exit(1)
 
     sideLength = CalibrationUtilities.GetCalibrationPatternSquareSideLengthInMeters()
@@ -291,29 +312,29 @@ def main():
     
         startTime = time.time()
     
-        imagesPerCamera, sizesPerCamera = PrepareImages(intrinsicPath, fileIndices, debugMaxNumCameraImage)
+        imageFilesPerCamera = PrepareImages(intrinsic_paths, fileIndices, debugMaxNumCameraImage)
         intrinsicMatrices = {}
         distortions = {}
         mean_errors = {}
 
         imagePoints = {}
-        for pin_id in imagesPerCamera.keys() :
+        for pin_id in imageFilesPerCamera.keys() :
             intrinsicMatrices[pin_id] = []
             distortions[pin_id] = []
             mean_errors[pin_id] = []
             imagePoints[pin_id] = []
             print(f'Calibrating camera {pin_id}')
             
-            cameraFilename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')
+            cameraFilename = os.path.join(args.output_path, f'calibration{pin_id}.json')
 
             camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
 
             useIntrinsicsGuess = args.use_intrinsics_guess and camaraCalibrationLoaded
 
-            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id] = CameraCalibration(patternSize, searchSize, zeroZoneSize, imagesPerCamera[pin_id], sizesPerCamera[pin_id][0], useIntrinsicsGuess, intrinsicMatrices[pin_id], distortions[pin_id], args.debug_path)
-            jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], sizesPerCamera[pin_id][0]) 
+            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id], image_size = CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFilesPerCamera[pin_id], useIntrinsicsGuess, intrinsicMatrices[pin_id], distortions[pin_id])
+            jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], image_size) 
 
-            filename = os.path.join(intrinsicPath, f'calibration{pin_id}.json')
+            filename = os.path.join(args.output_path, f'calibration{pin_id}.json')
             SaveJsonContent(jsonContent, filename)
 
         print(f'Completed in {(time.time() - startTime) / 60.0} minutes')
@@ -321,9 +342,9 @@ def main():
     elif args.extrinsic:
         startTime = time.time()
     
-        imagesPerCamera, sizesPerCamera = PrepareImages(extrinsicPath, fileIndices, debugMaxNumCameraImage)
+        imageFilesPerCamera = PrepareImages(extrinsic_paths, fileIndices, debugMaxNumCameraImage)
 
-        pin_ids = list(imagesPerCamera.keys())
+        pin_ids = list(imageFilesPerCamera.keys())
 
         pairs = CalibrationUtilities.MakePairs(args.pairs, pin_ids)
 
@@ -333,7 +354,7 @@ def main():
         distortions = {}
         for k0 in range(numCameras) :
             c = pin_ids[k0]
-            filename = os.path.join(intrinsicPath, f'calibration{c}.json')
+            filename = os.path.join(args.output_path, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
             intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             intrinsicMatrices[c] = intrinsicMatrix
@@ -344,19 +365,41 @@ def main():
         validImagesPerPair = {}
         validPointsPerPair = {}
 
+        image_size = None
+
+        debug_paths = {}
+
         for k0 in range(numCameras) :
             c = pin_ids[k0]
             imagePoints[c] = []
             # compute image points
-            images = imagesPerCamera[c]
+            image_paths = imageFilesPerCamera[c]
             
-            for i in range(0, len(images)):
-                image, image_path = images[i]
-                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, args.debug_path)
+            for i in range(0, len(image_paths)):
+
+                image_path = image_paths[i]
+                print(f'Loading {image_path}')
+                image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+
+                if image is None :
+                    print(f'Unable to load {image_path}')
+                    continue
+
+                if image_size is None :
+                    # we store channels, width and height
+                    image_size = image.shape[::-1]
+
+                debug_path = os.path.join(os.path.dirname(image_path), 'debug')
+                if not debug_path in debug_paths :
+                    shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
+                    os.mkdir(debug_path)
+                    debug_paths[debug_path] = None
+
+                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path)
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
-                    print(f'No image points found on image {os.path.basename(images[i][1])}')
+                    print(f'No image points found on image {os.path.basename(image_path)}')
                     sys.exit(1)
 
         for c0, c1 in pairs :
@@ -367,28 +410,30 @@ def main():
         for c0, c1 in pairs :
 
             print(f'Collecting necessary images for pair {c0} {c1}')
-            for i0 in range(0, len(imagesPerCamera[c0])) :
-                image0 = imagesPerCamera[c0][i0][0]
-                name0 = os.path.basename(imagesPerCamera[c0][i0][1])
+            for i0 in range(0, len(imageFilesPerCamera[c0])) :
+                image_path0 = imageFilesPerCamera[c0][i0]
+                name0 = os.path.basename(image_path0)
                 points0 = imagePoints[c0][i0]
+                directory0 = os.path.dirname(image_path0)
 
                 captureIndex0 = CalibrationUtilities.GetCaptureIndex(name0)
                 
-                for i1 in range(0, len(imagesPerCamera[c1])) :
-                    image1 = imagesPerCamera[c1][i1][0]
-                    name1 = os.path.basename(imagesPerCamera[c1][i1][1])
+                for i1 in range(0, len(imageFilesPerCamera[c1])) :
+                    image_path1 = imageFilesPerCamera[c1][i1]
+                    name1 = os.path.basename(image_path1)
                     points1 = imagePoints[c1][i1]
+                    directory1 = os.path.dirname(image_path1)
 
                     captureIndex1 = CalibrationUtilities.GetCaptureIndex(name1)
-                    
-                    if captureIndex0 == captureIndex1 :
+
+                    if captureIndex0 == captureIndex1 and directory0 == directory1 :
 
                         i = len(validImagesPerPair[(c0, c1)][0]) 
                             
-                        validImagesPerPair[(c0, c1)][0].append(imagesPerCamera[c0][i0])
+                        validImagesPerPair[(c0, c1)][0].append(imageFilesPerCamera[c0][i0])
                         validPointsPerPair[(c0, c1)][0].append(points0)
 
-                        validImagesPerPair[(c0, c1)][1].append(imagesPerCamera[c1][i1])
+                        validImagesPerPair[(c0, c1)][1].append(imageFilesPerCamera[c1][i1])
                         validPointsPerPair[(c0, c1)][1].append(points1)
 
                         n0 = len(validPointsPerPair[(c0, c1)][0])
@@ -401,7 +446,7 @@ def main():
                             print(f'Different data for {c0} and {c1} : {n0} {n1} {m0} {m1}')
                             sys.exit(1)
 
-                        print(f'Will use image pair {i} {name0} {name1}')
+                        print(f'[{i}]Using {image_path0}, {image_path1}')
 
         # Generate extrinsic data between cameras
         for c0, c1 in pairs :
@@ -420,24 +465,26 @@ def main():
             
             print(f'Calibrating stereo pair {c0} {c1}')
             
-            error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], sizesPerCamera[c0][0]) 
+            error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], image_size) 
             
             jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, patternSideLength)
-            filename = os.path.join(extrinsicPath, f'stereoCalibration{c0}_{c1}.json')
+            filename = os.path.join(args.output_path, f'stereoCalibration{c0}_{c1}.json')
             SaveJsonContent(jsonContent, filename)
+
     elif args.world_space:
+
         startTime = time.time()
         # take a single checkerboard laid out on the ground, and compute its origin as the world space origin.
-        imagesPerCamera, sizesPerCamera = PrepareImages(worldSpacePath, fileIndices, debugMaxNumCameraImage)
+        imageFilesPerCamera = PrepareImages(world_space_path, fileIndices, debugMaxNumCameraImage)
 
-        pin_ids = list(imagesPerCamera.keys())
+        pin_ids = list(imageFilesPerCamera.keys())
 
         # load intrinsic data from disk for each camera
         intrinsicMatrices = {}
         distortions = {}
         for k0 in range(0, numCameras) :
             c = pin_ids[k0]
-            filename = os.path.join(intrinsicPath, f'calibration{c}.json')
+            filename = os.path.join(intrinsic_paths, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
             intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             intrinsicMatrices.append(intrinsicMatrix)
@@ -452,9 +499,16 @@ def main():
             c = pin_ids[k0]
             imagePoints[c] = []
             # compute image points
-            images = imagesPerCamera[c]
-            for i in range(0, len(images)):
-                image, image_path = images[i]
+            image_paths = imageFilesPerCamera[c]
+
+            for i in range(0, len(image_paths)):
+                image_path = image_paths[i]
+
+                image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+                if image is None :
+                    print(f'Unable to load {image_path}')
+                    continue
+
                 success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, args.debug_path)
                 if success:
                     imagePoints[c].append(corners_subPix)
@@ -488,7 +542,7 @@ def main():
 
             if success:
                 jsonContent = CalibrationUtilities.WorldSpaceCalibrationToJson(intrinsicMatrices[c0], distortions[c0], R, T, patternSideLength)
-                filename = os.path.join(worldSpacePath, 'worldSpaceCalibration' + str(fileIndices[c0]) + '.json')
+                filename = os.path.join(world_space_path, 'worldSpaceCalibration' + str(fileIndices[c0]) + '.json')
                 SaveJsonContent(jsonContent, filename)
             else:
                 print(f'Could not compute worldspace transform for file indice {c0}')

@@ -890,7 +890,6 @@ class Script :
         # replicate along rgb
         Script.accumulation_normalization = np.tile(Script.accumulation_normalization[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
 
-
         ray_inW = np.reshape(ray_inW, (3, Script.H, Script.W))
         ray_inW = np.transpose(ray_inW, (1, 2, 0))
 

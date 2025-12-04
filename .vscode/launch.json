@@ -50,12 +50,12 @@
                 "--pairs", "0", "2", "4", "1", "3", "5", "0",
                 "--intrinsic_path", "~/gits/3sixd/calibration_data3",
                 "--extrinsic_path", "~/gits/3sixd/calibration_data3",
-                "--debug_path", "~/gits/3sixd/temp",
+                "--output_path", "~/gits/3sixd/calibration_data_test",
                 //"--use_intrinsics_guess",
                 "--pattern_size", "9", "6",        
                 "--pattern_side_length", "1",        
-                //"--intrinsic",
-                "--extrinsic",
+                "--intrinsic",
+                //"--extrinsic",
                 
             ]
         },
@@ -68,8 +68,8 @@
             "args": [
                 //"--show_pin",
                 "--path", "~/gits/3sixd/panorama_out",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data3",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data3",
+                "--intrinsic_paths", "~/gits/3sixd/calibration_data3",
+                "--extrinsic_paths", "~/gits/3sixd/calibration_data3",
                 "--stream",
                 "--alpha", "1.046666667",
                 //"--video_path", "/home/gimattiolo/gits/3sixd/output.mp4",
