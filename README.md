@@ -32,4 +32,4 @@ It accepts apths specifying where the calibration files are and the a list of ca
 A flag can be used to stream the fraems after they have been stitched to a udp stream baed on input ip and port. If the output path is valid a video file gets encoded in real time and saved in the folder.
 You can use 'q' to quit the application, and 's' to save a screenshot
 
-The folder good_calibrations include the best calibation setting recovered so far.
+The folder good_calibrations include the best calibation settings recovered so far.
