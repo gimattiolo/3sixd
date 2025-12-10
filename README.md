@@ -1,6 +1,6 @@
 <Dev environment>
 We used UV (https://docs.astral.sh/uv/) for creating python enviroment to run the script with their dependecies. You should use to easily setup the enviroment for running th scripts. 
-The dependencies of the project are written in the pyproject.toml file.
+The dependencies of the project are written in the pyproject.toml and uv.lock files.
 We depend on cv2(opencv), numpy, cupy and ffmpeg-python currently
 A custom build of opencv from source was required to compile opencv with GStreamer capabilities. On the linux distro running on device, GStreamer is the only lib able to detec and provide the camera frames to opencv.
 A python wheel was created to pacakge the python wrappers in order to install the package within UV.
