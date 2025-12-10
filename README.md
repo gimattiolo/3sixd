@@ -31,3 +31,5 @@ This is the script that performe the stitching of all the views from the cameras
 It accepts apths specifying where the calibration files are and the a list of camera pairs to be used, that should match what was used for camera calibration.
 A flag can be used to stream the fraems after they have been stitched to a udp stream baed on input ip and port. If the output path is valid a video file gets encoded in real time and saved in the folder.
 You can use 'q' to quit the application, and 's' to save a screenshot
+
+The folder good_calibrations include the best calibation setting recovered so far.
