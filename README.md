@@ -11,12 +11,14 @@ For development/debugging we used vscode - https://code.visualstudio.com/. A .vs
 The main scripts of this repo are cameraCalibrationCapture.py, cameraCalibration.py and panorama.py.
 
 cameraCalibrationCapture.py
+
 Use this script to capture a collection of pictures showing a calibration checkerboard like this one https://github.com/opencv/opencv/blob/4.x/doc/pattern.png.
 There are few parameters that can be passed tho the script. Of course path defines wherer th images will be saved on disk. 
 The auto flag automatically captures images at interval when detecting the patterns, the pattern_size, reqpresenting the number of rows and columns
 on the checkerboard used for calibration and allowed pins whihc allows the script to go through all the cameras and pairs of cameras based on the sequence.
 
 cameraCalibration.py
+
 This script takes as input the images recorded using the script above and runs internal routines to optimize intrinsic and extrinsic parameters for each camera 
 and for each feasible pair of cameras.
 Multiple paths can be specified for outputting the calibration data after the process is completed. The data are saved as json files. 
