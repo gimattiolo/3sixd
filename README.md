@@ -1,5 +1,5 @@
 <Dev environment>
-We used UV (https://docs.astral.sh/uv/) for creating python enviroment to run the script with their dependencies. You should use it to easily setup the environment for running th scripts. 
+We used UV (https://docs.astral.sh/uv/) for creating python enviroments to run the script with their dependencies. You should use it to easily setup the environment for running th scripts. 
 The dependencies of the project are listed in the pyproject.toml and uv.lock files.
 We depend on cv2(opencv), numpy, cupy and ffmpeg-python currently.
 A custom build of opencv from source was required to compile opencv with GStreamer capabilities. On the linux distro running on device, GStreamer is the only lib able to detec and provide the camera frames to opencv.
