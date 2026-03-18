@@ -1,26 +1,35 @@
 #version 450
 
-layout(binding = 0, rgba32f) readonly uniform image2D color_image;
-layout(binding = 1, rgba32f) readonly uniform image2D condition_image;
-layout(binding = 2, rgba32f) writeonly uniform image2D panorama_image;
-layout(binding = 3, rgba32f) readonly uniform image2D pixel_image;
+layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
+layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
+layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
+layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
+layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
+const int NUM_CAMERAS = 6;
+
 void main() 
 {
-    ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
-
-    // Load pixels from both images
-    ivec2 pixel = ivec2(imageLoad(pixel_image, pixelCoord).xy);
-    vec4 condition = imageLoad(condition_image, pixelCoord);
-
-    vec4 color = imageLoad(color_image, pixel);
-
-    vec4 zero = vec4(0.0);
+    ivec2 pixelCoord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 panorama = vec4(0.0);
-    panorama = mix(zero, color, condition);
-    //panorama = mix(zero, color, zero);
-    imageStore(panorama_image, pixelCoord, panorama);
+    for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
+    {
+        ivec3 pixelCoord3 = ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, pin_id);
 
+        ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixelCoord3).xy);
+        vec4 condition = imageLoad(condition_image_array, pixelCoord3);
+        vec4 color = imageLoad(color_image_array, ivec3(pixel.x, pixel.y, pin_id));
+
+        vec4 zero = vec4(0.0);
+        panorama += mix(zero, color, condition); //panorama += mix(zero, color, zero);
+
+    }
+
+    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixelCoord2);
+
+    panorama *= accumulation_normalization;
+
+    imageStore(panorama_image, pixelCoord2, panorama);
 }
