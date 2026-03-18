@@ -1,7 +1,11 @@
 import sys
 import struct
-from vulkan import *
+
 import numpy as np
+import array
+
+from vulkan import *
+
 # Load SPIR-V shader binary
 def load_shader(filename):
     with open(filename, "rb") as f:
@@ -286,6 +290,47 @@ def GetOutputImage(device, bufferMemory, bufferSize, H, W):
 
     return pa
 
+def Cleanup(instance, 
+    bufferMemory, 
+    buffer, 
+    computeShaderModule, 
+    descriptorPool, 
+    descriptorSetLayout, 
+    pipelineLayout, 
+    pipeline, 
+    commandPool, 
+    device, 
+    debugReportCallback):
+    # Clean up all Vulkan Resources.
+
+    if enableValidationLayers:
+        # destroy callback.
+        func = vkGetInstanceProcAddr(instance, 'vkDestroyDebugReportCallbackEXT')
+        if func == ffi.NULL:
+            raise Exception("Could not load vkDestroyDebugReportCallbackEXT")
+        if debugReportCallback:
+            func(instance, debugReportCallback, None)
+
+    if bufferMemory:
+        vkFreeMemory(device, bufferMemory, None)
+    if buffer:
+        vkDestroyBuffer(device, buffer, None)
+    if computeShaderModule:
+        vkDestroyShaderModule(device, computeShaderModule, None)
+    if descriptorPool:
+        vkDestroyDescriptorPool(device, descriptorPool, None)
+    if descriptorSetLayout:
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, None)
+    if pipelineLayout:
+        vkDestroyPipelineLayout(device, pipelineLayout, None)
+    if pipeline:
+        vkDestroyPipeline(device, pipeline, None)
+    if commandPool:
+        vkDestroyCommandPool(device, commandPool, None)
+    if device:
+        vkDestroyDevice(device, None)
+    if instance:
+        vkDestroyInstance(instance, None)
 
 # Create Vulkan instance
 app_info = VkApplicationInfo(
@@ -418,7 +463,17 @@ layoutInfo = VkDescriptorSetLayoutCreateInfo(
 )
 computeDescriptorSetLayout = vkCreateDescriptorSetLayout(device, layoutInfo, None)
 
-buffer, bufferMemory = CreateBuffer(physical_device, device, bufferSize, buffer, bufferMemory)
+# The mandelbrot set will be rendered to this buffer.
+# The memory that backs the buffer is bufferMemory.
+buffer = None
+bufferMemory = None
+bufferSize = 0
+
+# size of `buffer` in bytes.
+pixel = array.array('f', [0, 0, 0, 0])
+bufferSize = pixel.buffer_info()[1] * pixel.itemsize * W * H
+
+buffer, bufferMemory = CreateBuffer(physical_device, device, bufferSize)
 descriptorSetLayout = CreateDescriptorSetLayout(device)
 descriptorSet, descriptorPool = CreateDescriptorSet(device, computeDescriptorSetLayout, buffer, bufferSize)
 pipeline = CreateComputePipeline(device, computeDescriptorSetLayout)
@@ -433,8 +488,4 @@ output_image = GetOutputImage(device, bufferMemory, bufferSize, H, W)
 print("Minimal Vulkan compute pipeline created successfully.")
 
 # Cleanup
-vkDestroyPipeline(device, pipeline, None)
-vkDestroyPipelineLayout(device, pipeline_layout, None)
-vkDestroyShaderModule(device, shader_module, None)
-vkDestroyDevice(device, None)
-vkDestroyInstance(instance, None)
+Cleanup(instance, bufferMemory, buffer, shader_module, descriptorPool, descriptorSetLayout, pipelineLayout, pipeline, commandPool, device, debugReportCallback)
