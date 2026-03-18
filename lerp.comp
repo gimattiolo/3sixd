@@ -3,6 +3,7 @@
 layout(binding = 0, rgba32f) readonly uniform image2D color_image;
 layout(binding = 1, rgba32f) readonly uniform image2D condition_image;
 layout(binding = 2, rgba32f) writeonly uniform image2D panorama_image;
+layout(binding = 3, rgba32f) readonly uniform image2D pixel_image;
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -11,11 +12,13 @@ void main()
     ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
 
     // Load pixels from both images
-    vec4 color = imageLoad(color_image, pixelCoord);
+    ivec2 pixel = ivec2(imageLoad(pixel_image, pixelCoord).xy);
     vec4 condition = imageLoad(condition_image, pixelCoord);
 
-    vec4 zero;
-    vec4 panorama;
+    vec4 color = imageLoad(color_image, pixel);
+
+    vec4 zero = vec4(0.0);
+    vec4 panorama = vec4(0.0);
     panorama = mix(zero, color, condition);
     //panorama = mix(zero, color, zero);
     imageStore(panorama_image, pixelCoord, panorama);
