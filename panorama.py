@@ -19,7 +19,7 @@ import numpy as np
 import cv2
 import ffmpeg
 
-import WaveUtilities
+import Utilities
 import CalibrationUtilities
 
 two_pi = 2 * math.pi
@@ -54,35 +54,49 @@ class CameraDatum :
         return f'{self.pin_id}|{self.identifier}||{self.sensor_id}|{self.file}'
 
 def ScanCameras(pin_data) :
-    subprocess_out = subprocess.check_output(["v4l2-ctl", "--list-devices"]) 
-    subprocess_out_str = str(subprocess_out)
-
-    print(subprocess_out_str)
-    identifiers = re.findall(pattern='(platform:tegra-capture-vi:[0-9]+)', string=subprocess_out_str)
-    files = re.findall(pattern='/dev/video[0-9]+', string=subprocess_out_str)
-
-    num_cameras = len(identifiers)
-
-    if num_cameras <= 0 :
-        print('Found no camera')
-        sys.exit(0)
-
-    assert num_cameras == len(files)
-
-    # print(identifiers)
 
     cameraData = {}
-    for i in range(num_cameras) :
-        cameraDatum = CameraDatum()
-        match = re.search(pattern='[0-9]+', string=identifiers[i])
-        assert match is not None
-        cameraDatum.pin_id = int(match.group())
-        cameraDatum.identifier = identifiers[i]
-        cameraDatum.file = files[i]
-        match = re.search(pattern='[0-9]+', string=files[i])
-        assert match is not None
-        cameraDatum.sensor_id = int(match.group())        
-        cameraData[cameraDatum.pin_id] = cameraDatum
+    if Script.args.benchmark :
+        num_cameras = 6
+
+        for i in range(num_cameras) :
+            cameraDatum = CameraDatum()
+            cameraDatum.pin_id = i
+            cameraDatum.identifier = i
+            cameraDatum.file = i
+            cameraDatum.sensor_id = i        
+            cameraData[cameraDatum.pin_id] = cameraDatum
+
+    else :
+
+        subprocess_out = subprocess.check_output(["v4l2-ctl", "--list-devices"]) 
+        subprocess_out_str = str(subprocess_out)
+
+        print(subprocess_out_str)
+        identifiers = re.findall(pattern='(platform:tegra-capture-vi:[0-9]+)', string=subprocess_out_str)
+        files = re.findall(pattern='/dev/video[0-9]+', string=subprocess_out_str)
+
+        num_cameras = len(identifiers)
+
+        if num_cameras <= 0 :
+            print('Found no camera')
+            sys.exit(0)
+
+        assert num_cameras == len(files)
+
+        # print(identifiers)
+
+        for i in range(num_cameras) :
+            cameraDatum = CameraDatum()
+            match = re.search(pattern='[0-9]+', string=identifiers[i])
+            assert match is not None
+            cameraDatum.pin_id = int(match.group())
+            cameraDatum.identifier = identifiers[i]
+            cameraDatum.file = files[i]
+            match = re.search(pattern='[0-9]+', string=files[i])
+            assert match is not None
+            cameraDatum.sensor_id = int(match.group())        
+            cameraData[cameraDatum.pin_id] = cameraDatum
 
     # sort the entries by pin
     sorted_items = sorted(cameraData.items())
@@ -536,7 +550,8 @@ def panorama_main(daemon, delay_sec):
         Script.panoramas.put(panorama_numpy, block=False)
         Script.bytes.put(panorama_numpy.tobytes(), block=False)
 
-        #print(f'Pan:{time.time() - start_time} s')
+        pan_duration_s = time.time() - start_time
+        print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
         time.sleep(delay_sec)
 
@@ -560,27 +575,32 @@ def camera_main(daemon, delay_sec):
         Script.cameraLockObject.acquire() 
         for pin_id in Script.cameraData :
             cameraDatum = Script.cameraData[pin_id]
-            if cameraDatum.capture.isOpened() :
-                # Capture frame-by-frame
-                ret, cameraDatum.frame = cameraDatum.capture.read()
 
-                if not ret :
-                    print(f'{pin_id} not reading frames')
-                    cameraDatum.frame = Script.empty_frame.copy()
-
-                if Script.args.show_pin :
-                    cv2.putText(cameraDatum.frame, 
-                        f"Pin{pin_id}", 
-                        origin, 
-                        font, 
-                        fontScale,
-                        fontColor,
-                        thickness,
-                        lineType,
-                        bottomLeftOrigin=False)
-
+            if Script.args.benchmark :
+                cameraDatum.frame = Script.empty_frame.copy()
             else :
-                camerasOK = False
+
+                if cameraDatum.capture.isOpened() :
+                    # Capture frame-by-frame
+                    ret, cameraDatum.frame = cameraDatum.capture.read()
+
+                    if not ret :
+                        print(f'{pin_id} not reading frames')
+                        cameraDatum.frame = Script.empty_frame.copy()
+
+                    if Script.args.show_pin :
+                        cv2.putText(cameraDatum.frame, 
+                            f"Pin{pin_id}", 
+                            origin, 
+                            font, 
+                            fontScale,
+                            fontColor,
+                            thickness,
+                            lineType,
+                            bottomLeftOrigin=False)
+
+                else :
+                    camerasOK = False
         Script.cameraLockObject.release()
         # print(f'{time.time() - start_time}')
 
@@ -623,6 +643,7 @@ class Script :
         parser.add_argument('--udp_packet_size', type=int, default=1316, help='udp packet size')
         parser.add_argument('--alpha', type=float, default=0.0, help='the vertical angle in polar coordinates will be mapped to [alpha, pi - alpha]')
         parser.add_argument('--video_path', type=str, default='', help='if valid file, the stream will be encoded and saved into a video file')
+        parser.add_argument('--benchmark', action='store_true', help="Enable benchmarking mode (no actual camera capture, using video dummy data instead)")
 
         Script.args = parser.parse_args()
 
@@ -683,27 +704,33 @@ class Script :
 
         print("Creating capture objects...")
 
-        # (0): none             - Identity (no rotation)
-        # (1): counterclockwise - Rotate counter-clockwise 90 degrees
-        # (2): rotate-180       - Rotate 180 degrees
-        # (3): clockwise        - Rotate clockwise 90 degrees
-        # (4): horizontal-flip  - Flip horizontally
-        # (5): upper-right-diagonal - Flip across upper right/lower left diagonal
-        # (6): vertical-flip    - Flip vertically
-        # (7): upper-left-diagonal - Flip across upper left/low
-        # without this images are upside down
-        flip_method = 2
-        api_preference=cv2.CAP_GSTREAMER
+        if Script.args.benchmark :
+            for k in range(len(pin_ids)) :
+                pin_id = pin_ids[k]
+                cameraDatum = Script.cameraData[pin_id]
+                cameraDatum.frame = Script.empty_frame.copy()
+        else :
+            # (0): none             - Identity (no rotation)
+            # (1): counterclockwise - Rotate counter-clockwise 90 degrees
+            # (2): rotate-180       - Rotate 180 degrees
+            # (3): clockwise        - Rotate clockwise 90 degrees
+            # (4): horizontal-flip  - Flip horizontally
+            # (5): upper-right-diagonal - Flip across upper right/lower left diagonal
+            # (6): vertical-flip    - Flip vertically
+            # (7): upper-left-diagonal - Flip across upper left/low
+            # without this images are upside down
+            flip_method = 2
+            api_preference=cv2.CAP_GSTREAMER
 
-        for k in range(len(pin_ids)) :
-            pin_id = pin_ids[k]
-            cameraDatum = Script.cameraData[pin_id]
-            pinDatum = pin_data[pin_id]
+            for k in range(len(pin_ids)) :
+                pin_id = pin_ids[k]
+                cameraDatum = Script.cameraData[pin_id]
+                pinDatum = pin_data[pin_id]
 
-            pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
-            cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
-            print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
-            cameraDatum.frame = Script.empty_frame.copy()
+                pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
+                cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
+                print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
+                cameraDatum.frame = Script.empty_frame.copy()
         # create views in the window
 
         Script.panoramas = queue.Queue(maxsize=0)
@@ -752,14 +779,14 @@ class Script :
 
             cameraFilename = os.path.join(Script.args.intrinsic_path, f'calibration{c0}.json')
             
-            camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize = WaveUtilities.LoadCameraCalibration(cameraFilename)
+            camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize = Utilities.LoadCameraCalibration(cameraFilename)
 
             cameraCalibrationOK = cameraCalibrationOK and camaraCalibrationLoaded
 
             if not cameraCalibrationOK :
                 break
 
-            cameraDatum.f_pixels, cameraDatum.h_pixels, cameraDatum.ar = WaveUtilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
+            cameraDatum.f_pixels, cameraDatum.h_pixels, cameraDatum.ar = Utilities.GetCalibrationParameters(camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ImageSize, pixelSize_m)
             
             print(f'Camera {c0} using focal length {cameraDatum.f_pixels}[pixels], image height {cameraDatum.h_pixels}[pixels], aspect ratio {cameraDatum.ar}, pixelSize {pixelSize_m}[m], scale {scale}')
 
@@ -781,10 +808,14 @@ class Script :
             key = (c0, c1)
             invKey = (c1, c0)
 
-            stereoFilename = os.path.join(Script.args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
-            stereoCalibrationLoaded, R, T, E, F, S = WaveUtilities.LoadStereoCalibration(stereoFilename)
+            if Script.args.benchmark :
+                R = np.eye(3, 3, dtype=np.float32)
+                T = np.zeros((3, 1), dtype=np.float32)
+            else :
 
-            stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
+                stereoFilename = os.path.join(Script.args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
+                stereoCalibrationLoaded, R, T, E, F, S = Utilities.LoadStereoCalibration(stereoFilename)
+                stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
             
             if not stereoCalibrationOK :
                 break
@@ -820,7 +851,7 @@ class Script :
 
             # load worldspace info
             # worldSpaceFilename = os.path.join(Script.args.world_space_path, f'worldSpaceCalibration{c0}.json')
-            # worldSpaceCalibrationLoaded, R, T, S = WaveUtilities.LoadWorldSpaceCalibration(worldSpaceFilename)
+            # worldSpaceCalibrationLoaded, R, T, S = Utilities.LoadWorldSpaceCalibration(worldSpaceFilename)
             # if worldSpaceCalibrationLoaded:
             #     # from world to c0
             #     WC3x4 = np.block( [
