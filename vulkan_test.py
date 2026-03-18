@@ -3,6 +3,7 @@ import struct
 
 import numpy as np
 import array
+import math
 
 from vulkan import *
 
@@ -139,7 +140,7 @@ def CreateComputePipeline(device, descriptor_set_layout):
     else:
         raise Exception("Could not create compute pipeline")
 
-def CreateCommandBuffer(device, queue_family_index):
+def CreateCommandBuffer(device, queue_family_index, width, height, workgroup_size):
     # We are getting closer to the end. In order to send commands to the device(GPU),
     # we must first record commands into a command buffer.
     # To allocate a command buffer, we must first create a command pool. So let us do that.
@@ -184,8 +185,8 @@ def CreateCommandBuffer(device, queue_family_index):
     # The number of workgroups is specified in the arguments.
     # If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
     vkCmdDispatch(command_buffer,
-                    int(math.ceil(WIDTH / float(WORKGROUP_SIZE))),  # int for py2 compatible
-                    int(math.ceil(HEIGHT / float(WORKGROUP_SIZE))),  # int for py2 compatible
+                    int(math.ceil(width / float(workgroup_size))),  # int for py2 compatible
+                    int(math.ceil(height / float(workgroup_size))),  # int for py2 compatible
                     1)
 
     vkEndCommandBuffer(command_buffer)
@@ -230,12 +231,12 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
     descriptor_buffer_Info = VkDescriptorBufferInfo(
         buffer=buffer,
         offset=0,
-        range=bufferSize
+        range=buffer_size
     )
 
     write_descriptor_set = VkWriteDescriptorSet(
         sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        dstSet=descriptorSet,
+        dstSet=descriptor_set,
         dstBinding=0,  # write to the first, and only binding.
         descriptorCount=1,
         descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -256,7 +257,7 @@ def RunCommandBuffer(device, command_buffer, queue):
     )
 
     # We create a fence.
-    fence_create_infofo = VkFenceCreateInfo(
+    fence_create_info = VkFenceCreateInfo(
         sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         flags=0
     )
@@ -430,17 +431,18 @@ pipeline = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, [pipeline_info], 
 
 # pass the images from numpy to the shader here
 
-H = 1080
-W = 1920
+HEIGHT = 1080
+WIDTH = 1920
 N = 6
-C = 4
+CHANNELS = 4
+WORKGROUP_SIZE = 16
 
-panorama_image = np.zeros((H, W, C), dtype=np.float32)
+panorama_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
-color_image_array = np.zeros((H, W, C, N), dtype=np.float32)
-condition_image_array = np.zeros((H, W, C, N), dtype=np.float32)
-pixel_image_array = np.zeros((H, W, C, N), dtype=np.float32)
-accumulation_normalization_image = np.zeros((H, W, C), dtype=np.float32)
+color_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
+condition_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
+pixel_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
+accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
 #we might need to convert them to C,H,W
 
@@ -472,21 +474,23 @@ buffer_size = 0
 
 # size of buffer in bytes.
 pixel = array.array('f', [0, 0, 0, 0])
-buffer_size = pixel.buffer_info()[1] * pixel.itemsize * W * H
+buffer_size = pixel.buffer_info()[1] * pixel.itemsize * WIDTH * HEIGHT
 
 buffer, buffer_memory = CreateBuffer(physical_device, device, buffer_size)
 compute_descriptor_set_layout = CreateDescriptorSetLayout(device)
 descriptor_set, descriptor_pool = CreateDescriptorSet(device, compute_descriptor_set_layout, buffer, buffer_size)
 pipeline = CreateComputePipeline(device, compute_descriptor_set_layout)
-command_buffer, command_pool = CreateCommandBuffer(device)
+command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, WIDTH, HEIGHT, WORKGROUP_SIZE)
 
 # Finally, run the recorded command buffer.
 RunCommandBuffer(device, command_buffer, queue)
 
 # get the results into a numpy array here
-output_image = GetOutputImage(device, buffer_memory, buffer_size, H, W)
+output_image = GetOutputImage(device, buffer_memory, buffer_size, HEIGHT, WIDTH)
 
 print("Minimal Vulkan compute pipeline created successfully.")
 
 # Cleanup
+debug_report_callback = None
+enable_validation_layers = False
 Cleanup(instance, buffer_memory, buffer, shader_module, descriptor_pool, compute_descriptor_set_layout, pipeline_layout, pipeline, command_pool, device, debug_report_callback, enable_validation_layers)
