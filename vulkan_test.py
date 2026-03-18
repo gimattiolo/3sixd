@@ -1,12 +1,55 @@
 import sys
 import struct
 from vulkan import *
-
+import numpy as np
 # Load SPIR-V shader binary
 def load_shader(filename):
     with open(filename, "rb") as f:
         code = f.read()
     return code
+
+def runCommandBuffer(device, commandBuffer, queue):
+    # Now we shall finally submit the recorded command buffer to a queue.
+    submitInfo = VkSubmitInfo(
+        sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        commandBufferCount=1,  # submit a single command buffer
+        pCommandBuffers=[commandBuffer]  # the command buffer to submit.
+    )
+
+    # We create a fence.
+    fenceCreateInfo = VkFenceCreateInfo(
+        sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        flags=0
+    )
+    fence = vkCreateFence(device, fenceCreateInfo, None)
+
+    # We submit the command buffer on the queue, at the same time giving a fence.
+    vkQueueSubmit(queue, 1, submitInfo, fence)
+
+    # The command will not have finished executing until the fence is signalled.
+    # So we wait here.
+    # We will directly after this read our buffer from the GPU,
+    # and we will not be sure that the command has finished executing unless we wait for the fence.
+    # Hence, we use a fence here.
+    vkWaitForFences(device, 1, [fence], VK_TRUE, 100000000000)
+
+    vkDestroyFence(device, fence, None)
+
+def GetOutputImage(device, bufferMemory, bufferSize, H, W):
+    # Map the buffer memory, so that we can read from it on the CPU.
+    pmappedMemory = vkMapMemory(device, bufferMemory, 0, bufferSize, 0)
+
+    # Get the color data from the buffer, and cast it to bytes.
+    # We save the data to a vector.
+
+    pa = np.frombuffer(pmappedMemory, np.float32)
+    pa = pa.reshape((H, W, 4))
+    pa *= 255
+
+    # Done reading, so unmap.
+    vkUnmapMemory(device, bufferMemory)
+
+    return pa
 
 def findMemoryType(physicalDevice, memoryTypeBits, properties):
         memoryProperties = vkGetPhysicalDeviceMemoryProperties(physicalDevice)
@@ -155,6 +198,20 @@ pipeline = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, [pipeline_info], 
 
 # pass the images from numpy to the shader here
 
+H = 1080
+W = 1920
+N = 6
+C = 4
+
+panorama_image = np.zeros((H, W, C), dtype=np.float32)
+
+color_image_array = np.zeros((H, W, C, N), dtype=np.float32)
+condition_image_array = np.zeros((H, W, C, N), dtype=np.float32)
+pixel_image_array = np.zeros((H, W, C, N), dtype=np.float32)
+accumulation_normalization_image = np.zeros((H, W, C), dtype=np.float32)
+
+#we might need to convert them to C,H,W
+
 # layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
 # layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
 # layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
@@ -175,7 +232,10 @@ layoutInfo = VkDescriptorSetLayoutCreateInfo(
 )
 computeDescriptorSetLayout = vkCreateDescriptorSetLayout(device, layoutInfo, None)
 
+runCommandBuffer(device, commandBuffer, queue)
+
 # get the results into a numpy array here
+output_image = GetOutputImage(device, bufferMemory, bufferSize, H, W)
 
 print("Minimal Vulkan compute pipeline created successfully.")
 
