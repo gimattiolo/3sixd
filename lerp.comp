@@ -1,32 +1,23 @@
 #version 450
 
-layout (binding = 0) uniform ParameterUBO {
-    float deltaTime;
-} ubo;
-
-struct Particle {
-    vec2 position;
-    vec2 velocity;
-    vec4 color;
-};
-
-layout(std140, binding = 1) readonly buffer ParticleSSBOIn {
-   Particle particlesIn[ ];
-};
-
-layout(std140, binding = 2) buffer ParticleSSBOOut {
-   Particle particlesOut[ ];
-};
+layout(binding = 0, rgba32f) readonly uniform image2D color_image;
+layout(binding = 1, rgba32f) readonly uniform image2D condition_image;
+layout(binding = 2, rgba32f) writeonly uniform image2D panorama_image;
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() 
 {
-    uint index = gl_GlobalInvocationID.x;  
+    ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
 
-    Particle particleIn = particlesIn[index];
+    // Load pixels from both images
+    vec4 color = imageLoad(color_image, pixelCoord);
+    vec4 condition = imageLoad(condition_image, pixelCoord);
 
-    particlesOut[index].position = particleIn.position + particleIn.velocity.xy * ubo.deltaTime;
-    particlesOut[index].velocity = particleIn.velocity;
-    
+    vec4 zero;
+    vec4 panorama;
+    panorama = mix(zero, color, condition);
+    //panorama = mix(zero, color, zero);
+    imageStore(panorama_image, pixelCoord, panorama);
+
 }

@@ -528,6 +528,8 @@ def panorama_main(daemon, process_args):
 
         start_time = time.time()
 
+        ### shader begins ###
+
         # make panorama
         panorama = cp.zeros((args.H, args.W, 3), np.float32)
         for pin_id in args.cameraData :
@@ -551,6 +553,8 @@ def panorama_main(daemon, process_args):
         panorama *= accumulation_normalization
 
         panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
+
+        ### shader ends ###
 
         args.panoramas.put(panorama_numpy, block=False)
         args.bytes.put(panorama_numpy.tobytes(), block=False)
