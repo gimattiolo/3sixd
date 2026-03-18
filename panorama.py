@@ -7,8 +7,9 @@ import time
 import shutil
 import math
 import threading
-import queue
 import subprocess
+
+import multiprocessing
 
 # os.environ["LD_PRELOAD"] = "/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0"
 
@@ -374,7 +375,7 @@ class PinDatum :
 # this method finds out the pins and the related info
 
 def GetPinsData(pairs_list, flip_methods_list) :
-        # allowed_pins = [1,2,3,4,5]
+    # allowed_pins = [1,2,3,4,5]
     pin_data = {}
     for i in range(len(pairs_list)) :
         e = pairs_list[i]
@@ -392,11 +393,12 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
     return pin_data
 
-def encoding_main(daemon, delay_sec):
+def encoding_main(daemon, process_args):
+    args, delay_sec = process_args
     print(f"{daemon.name} starting...")
 
     # UDP destination address and port
-    url=f'udp://{Script.args.udp_address}:{Script.args.udp_port}?pkt_size={Script.args.udp_packet_size}'
+    url=f'udp://{args.udp_address}:{args.udp_port}?pkt_size={args.udp_packet_size}'
     print(f'{url=}')
     # on console run ffplay udp://@127.0.0.1:5000?pkt_size=1316
 
@@ -410,7 +412,7 @@ def encoding_main(daemon, delay_sec):
     #     #'/home/gimattiolo/gits/3sixd/AdobeStock_197174490_Video_4K_Preview.mp4',
     #     #        stream_loop=-1
     #     #     )
-    #     .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+    #     .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{_args.W}x{_args.H}')
     #     #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
     #     .output(
     #         f'{url}',                 
@@ -428,9 +430,9 @@ def encoding_main(daemon, delay_sec):
     #     .run_async(pipe_stdin=True)
     # )
 
-    stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{Script.W}x{Script.H}')
+    stream = ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{args.W}x{args.H}')
 
-    if os.path.isfile(Script.args.video_path) :
+    if os.path.isfile(args.video_path) :
         split_input = stream.split()
         output_udp = split_input[0].output(
             f'{url}', 
@@ -441,7 +443,7 @@ def encoding_main(daemon, delay_sec):
         )
 
         output_file = split_input[1].output(stream,
-            Script.args.video_path, 
+            args.video_path, 
             format="mp4",
             #vcodec="copy"  # Copy codecs without re-encoding
         ).overwrite_output()
@@ -495,7 +497,10 @@ def encoding_main(daemon, delay_sec):
 
     print(f"{daemon.name} done.")
 
-def panorama_main(daemon, delay_sec):
+def panorama_main(daemon, process_args):
+
+    args, delay_sec = process_args
+
     print(f"{daemon.name} starting...")
 
     colors = {}
@@ -503,31 +508,31 @@ def panorama_main(daemon, delay_sec):
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
 
-    for pin_id in Script.cameraData :
+    for pin_id in args.cameraData :
 
-        Script.pixel_coords[pin_id] = cp.array(Script.pixel_coords[pin_id])
-        Script.conditions[pin_id] = cp.array(Script.conditions[pin_id])
+        args.pixel_coords[pin_id] = cp.array(args.pixel_coords[pin_id])
+        args.conditions[pin_id] = cp.array(args.conditions[pin_id])
 
-    Script.accumulation_normalization = cp.array(Script.accumulation_normalization)
+    accumulation_normalization = cp.array(args.accumulation_normalization)
 
     while daemon.running :
 
         start_time = time.time()
 
-        Script.cameraLockObject.acquire() 
-        for pin_id in Script.cameraData :
-            colors[pin_id] = cp.array(Script.cameraData[pin_id].frame)
-        Script.cameraLockObject.release() 
+        args.cameraLockObject.acquire() 
+        for pin_id in args.cameraData :
+            colors[pin_id] = cp.array(args.cameraData[pin_id].frame)
+        args.cameraLockObject.release() 
 
         #print(f'Cam:{time.time() - start_time} s')
 
         start_time = time.time()
 
         # make panorama
-        panorama = cp.zeros((Script.H, Script.W, 3), np.float32)
-        for pin_id in Script.cameraData :
+        panorama = cp.zeros((args.H, args.W, 3), np.float32)
+        for pin_id in args.cameraData :
 
-            pixel = Script.pixel_coords[pin_id]
+            pixel = args.pixel_coords[pin_id]
             color = colors[pin_id][pixel[:, :, 0], pixel[:, :, 1], :]
 
             ### debug ###
@@ -540,15 +545,15 @@ def panorama_main(daemon, delay_sec):
 
             #############
 
-            Lerp_vectorized(Script.conditions[pin_id], 0.0, color, panorama)
+            Lerp_vectorized(args.conditions[pin_id], 0.0, color, panorama)
             #Lerp_vectorized(zeros, zeros, color, panorama)
 
-        panorama *= Script.accumulation_normalization
+        panorama *= accumulation_normalization
 
         panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
 
-        Script.panoramas.put(panorama_numpy, block=False)
-        Script.bytes.put(panorama_numpy.tobytes(), block=False)
+        args.panoramas.put(panorama_numpy, block=False)
+        args.bytes.put(panorama_numpy.tobytes(), block=False)
 
         pan_duration_s = time.time() - start_time
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
@@ -557,7 +562,10 @@ def panorama_main(daemon, delay_sec):
 
     print(f"{daemon.name} done.")
 
-def camera_main(daemon, delay_sec):
+def camera_main(daemon, process_args):
+
+    args, delay_sec = process_args
+
     print(f"{daemon.name} starting...")
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
@@ -572,12 +580,12 @@ def camera_main(daemon, delay_sec):
         camerasOK = True
 
         # start_time = time.time()
-        Script.cameraLockObject.acquire() 
-        for pin_id in Script.cameraData :
-            cameraDatum = Script.cameraData[pin_id]
+        args.cameraLockObject.acquire() 
+        for pin_id in args.cameraData :
+            cameraDatum = args.cameraData[pin_id]
 
-            if Script.args.benchmark :
-                cameraDatum.frame = Script.empty_frame.copy()
+            if args.benchmark :
+                cameraDatum.frame = args.empty_frame.copy()
             else :
 
                 if cameraDatum.capture.isOpened() :
@@ -586,9 +594,9 @@ def camera_main(daemon, delay_sec):
 
                     if not ret :
                         print(f'{pin_id} not reading frames')
-                        cameraDatum.frame = Script.empty_frame.copy()
+                        cameraDatum.frame = args.empty_frame.copy()
 
-                    if Script.args.show_pin :
+                    if args.show_pin :
                         cv2.putText(cameraDatum.frame, 
                             f"Pin{pin_id}", 
                             origin, 
@@ -601,7 +609,7 @@ def camera_main(daemon, delay_sec):
 
                 else :
                     camerasOK = False
-        Script.cameraLockObject.release()
+        args.cameraLockObject.release()
         # print(f'{time.time() - start_time}')
 
         # Display the resulting frame
@@ -613,21 +621,36 @@ def camera_main(daemon, delay_sec):
 
     print(f"{daemon.name} done.")
 
-class Daemon :
+class DaemonBase :
     def reset(self) :
         self.thread = ''
         self.main = ''
+        self.running = False
 
     def __init__(self) :
         self.reset() 
 
-    def __init__(self, name, main, delta_time_sec) :
+    def __init__(self, name, main) :
         self.main = main
-        self.thread = threading.Thread(target=main, args=(self, delta_time_sec,), daemon=True)
         self.name = name
+
+
+# class DaemonThread (DaemonBase) :
+
+#     def __init__(self, name, main, args) :
+#         super().__init__(name, main)
+#         self.thread = threading.Thread(target=main, args=args, daemon=True)
+
+class DaemonProcess (DaemonBase) :
+
+    def __init__(self, name, main, delta_time_sec) :
+        super().__init__(name, main)
+        self.thread = multiprocessing.Process(target=main, args=(self, delta_time_sec,))
+
 
 class Script :
     def main():
+
         parser = argparse.ArgumentParser('Panorama')
         parser.add_argument('--path', type=str, help='set the capture destination folder')
         parser.add_argument('--save_mode', type=int, default=0, help='0:append images into capture destination folder,1: delete content before starting')
@@ -644,8 +667,16 @@ class Script :
         parser.add_argument('--alpha', type=float, default=0.0, help='the vertical angle in polar coordinates will be mapped to [alpha, pi - alpha]')
         parser.add_argument('--video_path', type=str, default='', help='if valid file, the stream will be encoded and saved into a video file')
         parser.add_argument('--benchmark', action='store_true', help="Enable benchmarking mode (no actual camera capture, using video dummy data instead)")
+        parser.add_argument('--height', dest='H', type=int, default=1080, help='height of the output image')
+        parser.add_argument('--width', dest='W', type=int, default=1920, help='width of the output image')
+        parser.add_argument('--multiprocessing_start', type=str, default='spawn', help='multiprocessing start method')
 
         Script.args = parser.parse_args()
+
+        # fork Available on POSIX systems.
+        # forkserver on POSIX platforms which support passing file descriptors over Unix pipes such as Linux
+        # spawn is the default on Windows and macOS
+        multiprocessing.set_start_method(Script.args.multiprocessing_start)
 
         assert(len(Script.args.pairs) == len(Script.args.flip_methods))
 
@@ -657,29 +688,25 @@ class Script :
         pin_data = GetPinsData(Script.args.pairs, Script.args.flip_methods)
         
         #allowed_pins = None
-        Script.cameraData = ScanCameras(pin_data)
+        Script.args.cameraData = ScanCameras(pin_data)
 
-        num_cameras = len(Script.cameraData)
+        num_cameras = len(Script.args.cameraData)
 
         assert num_cameras >= 0
 
-        pin_ids = list(Script.cameraData.keys())
+        pin_ids = list(Script.args.cameraData.keys())
 
-        print(f'Using cameras:{Script.cameraData}')
+        print(f'Using cameras:{Script.args.cameraData}')
 
         print(f'Using path {Script.args.path}')      
 
         ext = '.png'
 
-        # width, height
-        Script.H, Script.W = (1080, 1920)
-        #H, W = (400, 400)
+        size_default = (Script.args.H,Script.args.W) 
 
-        size_default = (Script.H,Script.W) 
+        Script.args.empty_frame = np.zeros((Script.args.H, Script.args.W, 3), dtype=np.float32)
 
-        Script.empty_frame = np.zeros((Script.H, Script.W, 3), dtype=np.float32)
-
-        Script.empty_frame[:, :, 2] = 255.0 
+        Script.args.empty_frame[:, :, 2] = 255.0 
 
         if not os.path.exists(Script.args.path) :
             os.mkdir(Script.args.path)
@@ -707,8 +734,8 @@ class Script :
         if Script.args.benchmark :
             for k in range(len(pin_ids)) :
                 pin_id = pin_ids[k]
-                cameraDatum = Script.cameraData[pin_id]
-                cameraDatum.frame = Script.empty_frame.copy()
+                cameraDatum = Script.args.cameraData[pin_id]
+                cameraDatum.frame = Script.args.empty_frame.copy()
         else :
             # (0): none             - Identity (no rotation)
             # (1): counterclockwise - Rotate counter-clockwise 90 degrees
@@ -724,17 +751,17 @@ class Script :
 
             for k in range(len(pin_ids)) :
                 pin_id = pin_ids[k]
-                cameraDatum = Script.cameraData[pin_id]
+                cameraDatum = Script.args.cameraData[pin_id]
                 pinDatum = pin_data[pin_id]
 
                 pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
                 cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
                 print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
-                cameraDatum.frame = Script.empty_frame.copy()
+                cameraDatum.frame = Script.args.empty_frame.copy()
         # create views in the window
 
-        Script.panoramas = queue.Queue(maxsize=0)
-        Script.bytes = queue.Queue(maxsize=0)
+        Script.args.panoramas = multiprocessing.Queue(maxsize=0)
+        Script.args.bytes = multiprocessing.Queue(maxsize=0)
         
         running = True
         if SaveMode == 0 :
@@ -775,7 +802,7 @@ class Script :
         for k0 in range(0, num_cameras) :
             c0 = pin_ids[k0]
 
-            cameraDatum = Script.cameraData[c0]
+            cameraDatum = Script.args.cameraData[c0]
 
             cameraFilename = os.path.join(Script.args.intrinsic_path, f'calibration{c0}.json')
             
@@ -917,7 +944,7 @@ class Script :
         for k0 in range(num_cameras) :
             pin_id = pin_ids[k0]
 
-            cameraDatum = Script.cameraData[pin_id]
+            cameraDatum = Script.args.cameraData[pin_id]
 
             # we express everything in the camera c0 reference framework, i.e. camera c0 reference framework is the world reference framework
             
@@ -934,12 +961,12 @@ class Script :
         ray_inW = Angle2Dir_vectorized(gammaTheta)
         ray_inW = ray_inW.reshape((3,-1))    
 
-        Script.pixel_coords= {}
-        Script.conditions = {}
+        Script.args.pixel_coords= {}
+        Script.args.conditions = {}
 
-        num_acculations = np.zeros((Script.H,Script.W), dtype=np.float32)
+        num_acculations = np.zeros((Script.args.H,Script.args.W), dtype=np.float32)
 
-        for pin_id, cameraDatum in Script.cameraData.items() :
+        for pin_id, cameraDatum in Script.args.cameraData.items() :
 
             # in the following we assume the focal quad has size 1 x 1
             # and is at distance f along z relative to the camera
@@ -975,15 +1002,15 @@ class Script :
             # right handed
             ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
             ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
-            ps = np.reshape(ps[0:2, :], (2, Script.H, Script.W))
+            ps = np.reshape(ps[0:2, :], (2, Script.args.H, Script.args.W))
             #2,H,W -> H,W,2
             ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)
 
             pixel_x = ps[:, :, 0]
             pixel_y = ps[:, :, 1]
 
-            mask_x = (0 <= pixel_x) & (pixel_x < Script.W)
-            mask_y = (0 <= pixel_y) & (pixel_y < Script.H)
+            mask_x = (0 <= pixel_x) & (pixel_x < Script.args.W)
+            mask_y = (0 <= pixel_y) & (pixel_y < Script.args.H)
             condition = mask_x & mask_y
 
             num_acculations += condition
@@ -999,17 +1026,17 @@ class Script :
             pixel[:,:,1] *= condition_int
 
             # replicate along rgb
-            Script.conditions[pin_id] = np.tile(condition[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
+            Script.args.conditions[pin_id] = np.tile(condition[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
             
-            Script.pixel_coords[pin_id] = pixel
+            Script.args.pixel_coords[pin_id] = pixel
 
         #print(f'{num_acculations.min()}|{num_acculations.max()}')
 
-        Script.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
+        Script.args.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
         # replicate along rgb
-        Script.accumulation_normalization = np.tile(Script.accumulation_normalization[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
+        Script.args.accumulation_normalization = np.tile(Script.args.accumulation_normalization[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
 
-        ray_inW = np.reshape(ray_inW, (3, Script.H, Script.W))
+        ray_inW = np.reshape(ray_inW, (3, Script.args.H, Script.args.W))
         ray_inW = np.transpose(ray_inW, (1, 2, 0))
 
         output_id = 0
@@ -1021,8 +1048,8 @@ class Script :
         thickness              = 10
         lineType               = cv2.LINE_8
 
-        Script.cameraLockObject = threading.Lock()
-        Script.panoramaLockObject = threading.Lock()
+        Script.args.cameraLockObject = multiprocessing.Lock()
+        Script.args.panoramaLockObject = multiprocessing.Lock()
 
         delta_time_sec_30fps = 1.0 / 30.0
         delta_time_sec_60fps = 1.0 / 60.0
@@ -1031,14 +1058,14 @@ class Script :
         # Create threads
         Script.daemons = []
 
-        camera_daemon = Daemon('CameraDaemon', camera_main, delta_time_sec_60fps)
+        camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, delta_time_sec_60fps))
         Script.daemons.append(camera_daemon)
 
-        panorama_daemon = Daemon('PanoramaDaemon', panorama_main, delta_time_sec_60fps)
+        panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, delta_time_sec_60fps))
         Script.daemons.append(panorama_daemon)
 
         if Script.args.stream :
-            encoding_daemon = Daemon('EncodingDaemon', encoding_main, delta_time_sec_60fps)
+            encoding_daemon = DaemonProcess('EncodingDaemon', encoding_main, (Script.args, delta_time_sec_60fps))
             Script.daemons.append(encoding_daemon)
 
         # Start threads
@@ -1074,9 +1101,9 @@ class Script :
             panorama =  None
             
             try :
-                #print(f'queue_size={Script.panoramas.qsize()}')
-                panorama = Script.panoramas.get(block=False)
-            except Exception :
+                #print(f'queue_size={Script.args.panoramas.qsize()}')
+                panorama = Script.args.panoramas.get(block=False)
+            except Exception as e :
                 continue
 
             if key == ord('s') :
