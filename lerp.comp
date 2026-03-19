@@ -15,6 +15,8 @@ void main()
     ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 zero4 = vec4(0.0);
 
+    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
+
     vec4 panorama = vec4(0.0);
     for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
     {
@@ -26,8 +28,6 @@ void main()
 
         panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
     }
-
-    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
 
     panorama *= accumulation_normalization;
 
