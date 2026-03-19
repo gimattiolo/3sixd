@@ -1,9 +1,12 @@
 import sys
-import struct
+import os
+
 
 import numpy as np
 import array
 import math
+
+from PIL import Image
 
 from vulkan import *
 
@@ -66,6 +69,65 @@ def CreateBuffer(physical_device, device, buffer_size):
     return buffer, buffer_memory
 
 
+def CreateImage2D(physical_device, device, width, height):
+    # We will now create a buffer. We will render the mandelbrot set into this buffer
+    # in a computer shade later.
+    buffer_info = VkImageCreateInfo(
+        sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        imageType=VK_IMAGE_TYPE_2D,
+        format=VK_FORMAT_R32G32B32A32_SFLOAT,
+        extent=VkExtent3D(
+            width=width,
+            height=height,
+            depth=1
+        ),
+        mipLevels=1,
+        arrayLayers=1,
+        samples=VK_SAMPLE_COUNT_1_BIT,
+        tiling=VK_IMAGE_TILING_OPTIMAL,
+        usage=VK_IMAGE_USAGE_STORAGE_BIT,
+        sharingMode=VK_SHARING_MODE_EXCLUSIVE
+    )
+
+    image = vkCreateImage(device, buffer_info, None)
+
+    # But the image doesn't allocate memory for itself, so we must do that manually.
+
+    # First, we find the memory requirements for the image.
+    memory_requirements = vkGetImageMemoryRequirements(device, image)
+
+    # There are several types of memory that can be allocated, and we must choose a memory type that:
+    # 1) Satisfies the memory requirements(memoryRequirements.memoryTypeBits).
+    # 2) Satifies our own usage requirements. We want to be able to read the buffer memory from the GPU to the CPU
+    #    with vkMapMemory, so we set VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT.
+    # Also, by setting VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, memory written by the device(GPU) will be easily
+    # visible to the host(CPU), without having to call any extra flushing commands. So mainly for convenience, we set
+    # this flag.
+    # index = FindMemoryType(physical_device, memory_requirements.memoryTypeBits,
+    #                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+
+    #index = FindMemoryType(physical_device, memory_requirements.memoryTypeBits,
+    #                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+
+
+    #assert index != -1, "Failed to find suitable memory type for image"
+    
+    # Now use obtained memory requirements info to allocate the memory for the image.
+    allocate_info = VkMemoryAllocateInfo(
+        sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        allocationSize=memory_requirements.size,  # specify required memory.
+        #memoryTypeIndex=index
+    )
+
+    # allocate memory on device.
+    image_memory = vkAllocateMemory(device, allocate_info, None)
+
+    # Now associate that allocated memory with the image. With that, the image is backed by actual memory.
+    vkBindImageMemory(device, image, image_memory, 0)
+
+    return image, image_memory
+
+
 def CreateDescriptorSetLayout(device):
 
     # layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
@@ -109,7 +171,7 @@ def CreateDescriptorSetLayout(device):
     )
 
     # Create the descriptor set layout.
-    descriptor_set_layout = vkCreateDescriptorSetLayout(device, descriptor_set_layout_info, None)
+    descriptor_set_layout = vkCreateDescriptorSetLayout(device, descriptor_set_layout_info, pAllocator=None)
     return descriptor_set_layout
 
 def CreateComputePipeline(device, descriptor_set_layout, shader_file):
@@ -239,7 +301,7 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
     descriptor_pool = vkCreateDescriptorPool(device, descriptor_pool_info, None)
 
     # With the pool allocated, we can now allocate the descriptor set.
-    descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo(
+    descriptor_set_allocate_info = VkDescriptorSetAllocateInfo(
         sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         descriptorPool=descriptor_pool,
         descriptorSetCount=1,
@@ -247,31 +309,38 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
     )
 
     # allocate descriptor set.
-    descriptor_set = vkAllocateDescriptorSets(device, descriptorSetAllocateInfo)[0]
+    descriptor_set = vkAllocateDescriptorSets(device, descriptor_set_allocate_info)[0]
 
-    # Next, we need to connect our actual storage buffer with the descrptor.
-    # We use vkUpdateDescriptorSets() to update the descriptor set.
+    return descriptor_set, descriptor_pool
 
-    # Specify the buffer to bind to the descriptor.
-    descriptor_buffer_Info = VkDescriptorBufferInfo(
-        buffer=buffer,
-        offset=0,
-        range=buffer_size
-    )
-
+def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info):
     write_descriptor_set = VkWriteDescriptorSet(
         sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         dstSet=descriptor_set,
         dstBinding=0,  # write to the first, and only binding.
         descriptorCount=1,
         descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        pBufferInfo=descriptor_buffer_Info
+        pBufferInfo=descriptor_buffer_info
     )
 
     # perform the update of the descriptor set.
-    vkUpdateDescriptorSets(device, 1, [write_descriptor_set], 0, None)
+    vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[write_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
 
-    return descriptor_set, descriptor_pool
+
+def UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info):
+    read_descriptor_set = VkReadDescriptorSet(
+        sType=VK_STRUCTURE_TYPE_READ_DESCRIPTOR_SET,
+        dstSet=descriptor_set,
+        dstBinding=0,  # write to the first, and only binding.
+        descriptorCount=1,
+        descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        pBufferInfo=descriptor_buffer_info
+    )
+
+    # perform the update of the descriptor set.
+    vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[read_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
+
+
 
 def RunCommandBuffer(device, command_buffer, queue):
     # Now we shall finally submit the recorded command buffer to a queue.
@@ -442,21 +511,39 @@ accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.
 #we might need to convert them to C,H,W
 
 # The mandelbrot set will be rendered to this buffer.
-# The memory that backs the buffer is bufferMemory.
+# The memory that backs the buffer is buffer_memory.
 buffer = None
 buffer_memory = None
 buffer_size = 0
 
 # size of buffer in bytes.
-pixel = array.array('f', [0, 0, 0, 0])
-buffer_size = pixel.buffer_info()[1] * pixel.itemsize * WIDTH * HEIGHT
+pixel = array.array('f', [0, 0, 0, 0]) # vec4
+address, length = pixel.buffer_info()
+
+#buffer_size = length * pixel.itemsize * WIDTH * HEIGHT
+
+buffer_size = WIDTH * HEIGHT * CHANNELS * 4  # 4 bytes per float
 
 buffer, buffer_memory = CreateBuffer(physical_device, device, buffer_size)
+#buffer, buffer_memory = CreateImage2D(physical_device, device, WIDTH, HEIGHT)
 
 descriptor_set_layout = CreateDescriptorSetLayout(device)
 pipeline, pipeline_layout, shader_module = CreateComputePipeline(device, descriptor_set_layout, "lerp.spv")
 
 descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size)
+
+# Next, we need to connect our actual storage buffer with the descriptor.
+# We use vkUpdateDescriptorSets() to update the descriptor set.
+
+# Specify the buffer to bind to the descriptor.
+descriptor_buffer_info = VkDescriptorBufferInfo(
+    buffer=buffer,
+    offset=0,
+    range=buffer_size
+)
+
+UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info)
+
 command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, pipeline_layout, WIDTH, HEIGHT, WORKGROUP_SIZE)
 
 # Finally, run the recorded command buffer.
@@ -464,6 +551,14 @@ RunCommandBuffer(device, command_buffer, queue)
 
 # get the results into a numpy array here
 output_image = GetOutputImage(device, buffer_memory, buffer_size, HEIGHT, WIDTH)
+
+
+
+# Now we save the acquired color data to a .png.
+image = Image.fromarray(output_image.astype(np.uint8))
+file_path = 'test.png'
+os.remove(file_path)
+image.save(file_path)
 
 print("Minimal Vulkan compute pipeline created successfully.")
 

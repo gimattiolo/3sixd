@@ -1,35 +1,61 @@
 #version 450
 
-layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
-layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
-layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
-layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
-layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
 
-layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
-
+#define WIDTH 1920
+#define HEIGHT 1080
+#define WORKGROUP_SIZE 32
 const int NUM_CAMERAS = 6;
+
+layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1 ) in;
+
+
+struct Pixel{
+  vec4 value;
+};
+
+layout(std140, binding = 0) buffer buf
+{
+   Pixel panorama_image[];
+};
+
+//layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
+//layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
+//layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
+//layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
+//layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
+
+
 
 void main() 
 {
+    /*
+    In order to fit the work into workgroups, some unnecessary threads are launched.
+    We terminate those threads here.
+    */
+    if(gl_GlobalInvocationID.x >= WIDTH || gl_GlobalInvocationID.y >= HEIGHT)
+    {
+        return;
+    }
+
     ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 zero4 = vec4(0.0);
 
-    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
+    //vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
 
-    vec4 panorama = vec4(0.0);
+    vec4 panorama = vec4(0.0, 1.0, 0.0, 1.0);
     for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
     {
-        ivec3 pixel_coord3 = ivec3(pixel_coord2.x, pixel_coord2.y, pin_id);
+        //ivec3 pixel_coord3 = ivec3(pixel_coord2.x, pixel_coord2.y, pin_id);
 
-        ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixel_coord3).xy);
-        vec4 condition = imageLoad(condition_image_array, pixel_coord3);
-        vec4 color = imageLoad(color_image_array, ivec3(pixel.x, pixel.y, pin_id));
+        //ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixel_coord3).xy);
+        //vec4 condition = imageLoad(condition_image_array, pixel_coord3);
+        //vec4 color = imageLoad(color_image_array, ivec3(pixel.x, pixel.y, pin_id));
 
-        panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
+        //panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
     }
 
-    panorama *= accumulation_normalization;
+    //panorama *= accumulation_normalization;
 
-    imageStore(panorama_image, pixel_coord2, panorama);
+    //imageStore(panorama_image, pixel_coord2, panorama);
+    panorama_image[WIDTH * pixel_coord2.y + pixel_coord2.x].value = panorama;
 }
