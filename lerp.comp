@@ -15,20 +15,28 @@ struct Pixel{
 
 layout(std140, binding = 0) buffer PanoramaSBOOut
 {
-   Pixel panorama_image[];
+   Pixel panorama_buffer[];
 };
 
-layout(std140, binding = 1) readonly buffer ParticleSSBOIn {
-   Pixel  accumulation_normalization_image[];
+layout(std140, binding = 1) readonly buffer AccumulationSSBOIn 
+{
+   Pixel  accumulation_normalization_buffer[];
 };
 
-//layout(binding = 1, rgba32f) readonly uniform image2D accumulation_normalization_image;
-//layout(binding = 2, rgba32f) writeonly uniform image2D panorama_image;
-//layout(binding = 3, rgba32f) readonly uniform image2DArray color_image_array;
-//layout(binding = 4, rgba32f) readonly uniform image2DArray condition_image_array;
-//layout(binding = 5, rgba32f) readonly uniform image2DArray pixel_image_array;
+layout(std140, binding = 2) readonly buffer ColorArraySSBOIn 
+{
+   Pixel  color_array_buffer[];
+};
 
+layout(std140, binding = 3) readonly buffer ConditionArraySSBOIn 
+{
+   Pixel  condition_array_buffer[];
+};
 
+layout(std140, binding = 4) readonly buffer PixelArraySSBOIn 
+{
+   Pixel  pixel_array_buffer[];
+};
 
 void main() 
 {
@@ -44,26 +52,26 @@ void main()
     ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 zero4 = vec4(0.0);
 
-    int index = WIDTH * pixel_coord2.y + pixel_coord2.x;
+    int output_index2 = WIDTH * pixel_coord2.y + pixel_coord2.x;
 
-    //vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
-    vec4 accumulation_normalization = accumulation_normalization_image[index].value;
+    vec4 accumulation_normalization = accumulation_normalization_buffer[output_index2].value;
 
     vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
     for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
     {
-        //ivec3 pixel_coord3 = ivec3(pixel_coord2.x, pixel_coord2.y, pin_id);
+        int pixel_index3 = WIDTH * HEIGHT * pin_id + WIDTH * pixel_coord2.y + pixel_coord2.x;
 
-        //ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixel_coord3).xy);
-        //vec4 condition = imageLoad(condition_image_array, pixel_coord3);
-        //vec4 color = imageLoad(color_image_array, ivec3(pixel.x, pixel.y, pin_id));
+        vec4 pixel_value = pixel_array_buffer[pixel_index3].value;
+        vec4 condition = condition_array_buffer[pixel_index3].value;
 
-        //panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
+        ivec2 color_coord2 = ivec2(pixel_value.x, pixel_value.y);
+        int color_index3 = WIDTH * HEIGHT * pin_id + WIDTH * color_coord2.y + color_coord2.x;
+        vec4 color = color_array_buffer[color_index3].value;
+        panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
     }
 
-    //panorama *= accumulation_normalization;
+    //panorama.xyz *= accumulation_normalization.xyz;
     panorama.xyz = accumulation_normalization.xyz;
 
-    //imageStore(panorama_image, pixel_coord2, panorama);
-    panorama_image[index].value = panorama;
+    panorama_buffer[output_index2].value = panorama;
 }

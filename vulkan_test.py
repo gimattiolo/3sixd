@@ -421,6 +421,17 @@ def Cleanup(instance,
     if instance:
         vkDestroyInstance(instance, None)
 
+def CopyBuffer(numpy_array, device, buffer_memory, buffer_size):
+
+    # Ensure array is contiguous in memory
+    if not numpy_array.flags['C_CONTIGUOUS']:
+        numpy_array = np.ascontiguousarray(numpy_array)
+
+    ffi_buffer = vkMapMemory(device, buffer_memory, offset=0, size=buffer_size, flags=0)
+    src_bytes = numpy_array.tobytes()
+    ffi_buffer[:len(src_bytes)] = src_bytes
+    vkUnmapMemory(device, buffer_memory)
+
 # Create Vulkan instance
 app_info = VkApplicationInfo(
     sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -496,13 +507,13 @@ WORKGROUP_SIZE = 16
 
 panorama_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
-color_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-condition_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-pixel_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+color_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
+condition_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
+pixel_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
+accumulation_normalization = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
-accumulation_normalization_image[:,:,0] = 1.0
-accumulation_normalization_image[:,:,1] = 1.0
+accumulation_normalization[:,:,0] = 0.0
+accumulation_normalization[:,:,1] = 1.0
 
 #we might need to convert them to C,H,W
 
@@ -519,19 +530,18 @@ address, length = pixel.buffer_info()
 #buffer_size = length * pixel.itemsize * WIDTH * HEIGHT
 
 buffer_size = WIDTH * HEIGHT * CHANNELS * 4  # 4 bytes per float
+buffer_array_size = NUM_CAMERAS * WIDTH * HEIGHT * CHANNELS * 4  # 4 bytes per float
 
 panorama_buffer, panorama_buffer_memory = CreateBuffer(physical_device, device, buffer_size, pAllocator=None, pBuffer=None)
-accumulation_buffer, accumulation_buffer_memory = CreateBuffer(physical_device, device, buffer_size, pAllocator=None, pBuffer=None)
+accumulation_normalization_buffer, accumulation_normalization_buffer_memory = CreateBuffer(physical_device, device, buffer_size, pAllocator=None, pBuffer=None)
+color_array_buffer, color_array_buffer_memory = CreateBuffer(physical_device, device, buffer_array_size, pAllocator=None, pBuffer=None)
+condition_array_buffer, condition_array_buffer_memory = CreateBuffer(physical_device, device, buffer_array_size, pAllocator=None, pBuffer=None)
+pixel_array_buffer, pixel_array_buffer_memory = CreateBuffer(physical_device, device, buffer_array_size, pAllocator=None, pBuffer=None)
 
-
-# Ensure array is contiguous in memory
-if not accumulation_normalization_image.flags['C_CONTIGUOUS']:
-    accumulation_normalization_image = np.ascontiguousarray(accumulation_normalization_image)
-
-ffi_buffer = vkMapMemory(device, accumulation_buffer_memory, offset=0, size=buffer_size, flags=0)
-src_bytes = accumulation_normalization_image.tobytes()
-ffi_buffer[:len(src_bytes)] = src_bytes
-vkUnmapMemory(device, accumulation_buffer_memory)
+CopyBuffer(accumulation_normalization, device, accumulation_normalization_buffer_memory, buffer_size)
+CopyBuffer(color_array, device, color_array_buffer_memory, buffer_array_size)
+CopyBuffer(condition_array, device, condition_array_buffer_memory, buffer_array_size)
+CopyBuffer(pixel_array, device, pixel_array_buffer_memory, buffer_array_size)
 
 # Here we specify a descriptor set layout. This allows us to bind our descriptors to
 # resources in the shader.
@@ -541,13 +551,6 @@ vkUnmapMemory(device, accumulation_buffer_memory)
 #   layout(std140, binding = 0) buffer buf
 # in the compute shader.
 descriptor_set_layout_bindings = [] 
-    # VkDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    # VkDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    # VkDescriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    # VkDescriptorSetLayoutBinding(3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    # VkDescriptorSetLayoutBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-#     VkDescriptorSetLayoutBinding(binding=0, descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
-# ]
 
 descriptor_set_layout_bindings.append(
     VkDescriptorSetLayoutBinding(
@@ -565,6 +568,29 @@ descriptor_set_layout_bindings.append(
     stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
 )
 
+descriptor_set_layout_bindings.append(
+    VkDescriptorSetLayoutBinding(
+    binding=2, 
+    descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+    descriptorCount=1, 
+    stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+)
+
+descriptor_set_layout_bindings.append(
+    VkDescriptorSetLayoutBinding(
+    binding=3, 
+    descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+    descriptorCount=1, 
+    stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+)
+
+descriptor_set_layout_bindings.append(
+    VkDescriptorSetLayoutBinding(
+    binding=4, 
+    descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+    descriptorCount=1, 
+    stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+)
 
 descriptor_set_layout = CreateDescriptorSetLayout(device, descriptor_set_layout_bindings)
 pipeline, pipeline_layout, shader_module = CreateComputePipeline(device, descriptor_set_layout, "lerp.spv")
@@ -574,22 +600,22 @@ descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_lay
 # Next, we need to connect our actual storage buffer with the descriptor.
 # We use vkUpdateDescriptorSets() to update the descriptor set.
 
-# Specify the buffer to bind to the descriptor.
-descriptor_buffer_info = VkDescriptorBufferInfo(
-    buffer=panorama_buffer,
-    offset=0,
-    range=buffer_size
-)
-UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=0)
+buffer_info = [
+    (panorama_buffer, buffer_size),
+    (accumulation_normalization_buffer, buffer_size),
+    (color_array_buffer, buffer_array_size),
+    (condition_array_buffer, buffer_array_size),
+    (pixel_array_buffer, buffer_array_size)]
 
-descriptor_buffer_info = VkDescriptorBufferInfo(
-    buffer=accumulation_buffer,
-    offset=0,
-    range=buffer_size
-)
-UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=1)
-
-#UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=0)
+for i, (buf, buf_size) in enumerate(buffer_info):
+    # Specify the buffer to bind to the descriptor.
+    descriptor_buffer_info = VkDescriptorBufferInfo(
+        buffer=buf,
+        offset=0,
+        range=buf_size
+    )
+    UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=i)
+    #UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=0)
 
 command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, pipeline_layout, WIDTH, HEIGHT, WORKGROUP_SIZE)
 

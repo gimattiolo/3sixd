@@ -1,0 +1,1 @@
+glslangValidator -V ./lerp.comp -o ./lerp.spv
