@@ -1,13 +1,11 @@
 #version 450
 
-
 #define WIDTH 1920
 #define HEIGHT 1080
 #define WORKGROUP_SIZE 32
 const int NUM_CAMERAS = 6;
 
 layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1 ) in;
-
 
 struct Pixel{
   vec4 value;
