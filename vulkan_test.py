@@ -433,15 +433,15 @@ pipeline = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, [pipeline_info], 
 
 HEIGHT = 1080
 WIDTH = 1920
-N = 6
+NUM_CAMERAS = 6
 CHANNELS = 4
 WORKGROUP_SIZE = 16
 
 panorama_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
-color_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
-condition_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
-pixel_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, N), dtype=np.float32)
+color_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
+condition_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
+pixel_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
 accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
 #we might need to convert them to C,H,W
