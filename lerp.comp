@@ -12,24 +12,24 @@ const int NUM_CAMERAS = 6;
 
 void main() 
 {
-    ivec2 pixelCoord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    vec4 zero4 = vec4(0.0);
+
     vec4 panorama = vec4(0.0);
     for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
     {
-        ivec3 pixelCoord3 = ivec3(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, pin_id);
+        ivec3 pixel_coord3 = ivec3(pixel_coord2.x, pixel_coord2.y, pin_id);
 
-        ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixelCoord3).xy);
-        vec4 condition = imageLoad(condition_image_array, pixelCoord3);
+        ivec2 pixel = ivec2(imageLoad(pixel_image_array, pixel_coord3).xy);
+        vec4 condition = imageLoad(condition_image_array, pixel_coord3);
         vec4 color = imageLoad(color_image_array, ivec3(pixel.x, pixel.y, pin_id));
 
-        vec4 zero = vec4(0.0);
-        panorama += mix(zero, color, condition); //panorama += mix(zero, color, zero);
-
+        panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
     }
 
-    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixelCoord2);
+    vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
 
     panorama *= accumulation_normalization;
 
-    imageStore(panorama_image, pixelCoord2, panorama);
+    imageStore(panorama_image, pixel_coord2, panorama);
 }
