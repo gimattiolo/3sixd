@@ -13,16 +13,20 @@ struct Pixel{
   vec4 value;
 };
 
-layout(std140, binding = 0) buffer buf
+layout(std140, binding = 0) buffer PanoramaSBOOut
 {
    Pixel panorama_image[];
 };
 
-//layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
-//layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
-//layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
-//layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
-//layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
+layout(std140, binding = 1) readonly buffer ParticleSSBOIn {
+   Pixel  accumulation_normalization_image[];
+};
+
+//layout(binding = 1, rgba32f) readonly uniform image2D accumulation_normalization_image;
+//layout(binding = 2, rgba32f) writeonly uniform image2D panorama_image;
+//layout(binding = 3, rgba32f) readonly uniform image2DArray color_image_array;
+//layout(binding = 4, rgba32f) readonly uniform image2DArray condition_image_array;
+//layout(binding = 5, rgba32f) readonly uniform image2DArray pixel_image_array;
 
 
 
@@ -40,9 +44,12 @@ void main()
     ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 zero4 = vec4(0.0);
 
-    //vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
+    int index = WIDTH * pixel_coord2.y + pixel_coord2.x;
 
-    vec4 panorama = vec4(0.0, 1.0, 0.0, 1.0);
+    //vec4 accumulation_normalization = imageLoad(accumulation_normalization_image, pixel_coord2);
+    vec4 accumulation_normalization = accumulation_normalization_image[index].value;
+
+    vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
     for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
     {
         //ivec3 pixel_coord3 = ivec3(pixel_coord2.x, pixel_coord2.y, pin_id);
@@ -55,7 +62,8 @@ void main()
     }
 
     //panorama *= accumulation_normalization;
+    panorama.xyz = accumulation_normalization.xyz;
 
     //imageStore(panorama_image, pixel_coord2, panorama);
-    panorama_image[WIDTH * pixel_coord2.y + pixel_coord2.x].value = panorama;
+    panorama_image[index].value = panorama;
 }

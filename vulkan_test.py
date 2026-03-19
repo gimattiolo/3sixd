@@ -6,6 +6,8 @@ import numpy as np
 import array
 import math
 
+import ctypes
+
 from PIL import Image
 
 from vulkan import *
@@ -27,7 +29,7 @@ def FindMemoryType(physical_device, memory_type_bits, properties):
 
         return -1
 
-def CreateBuffer(physical_device, device, buffer_size):
+def CreateBuffer(physical_device, device, buffer_size, pAllocator, pBuffer):
     # We will now create a buffer. We will render the mandelbrot set into this buffer
     # in a computer shade later.
     buffer_info = VkBufferCreateInfo(
@@ -37,7 +39,7 @@ def CreateBuffer(physical_device, device, buffer_size):
         sharingMode=VK_SHARING_MODE_EXCLUSIVE  # buffer is exclusive to a single queue family at a time.
     )
 
-    buffer = vkCreateBuffer(device, buffer_info, None)
+    buffer = vkCreateBuffer(device, buffer_info,pAllocator, pBuffer)
 
     # But the buffer doesn't allocate memory for itself, so we must do that manually.
 
@@ -123,51 +125,42 @@ def CreateImage2D(physical_device, device, width, height):
     image_memory = vkAllocateMemory(device, allocate_info, None)
 
     # Now associate that allocated memory with the image. With that, the image is backed by actual memory.
-    vkBindImageMemory(device, image, image_memory, 0)
+    vkBindImageMemory(device, image, image_memory, memoryOffset=0)
+
+    # subresource_range = VkImageSubresourceRange(
+    #     aspectMask=VK_IMAGE_ASPECT_COLOR_BIT,
+    #     baseMipLevel=0,
+    #     levelCount=1,
+    #     baseArrayLayer=0,
+    #     layerCount=1)
+
+    # components = VkComponentMapping(
+    #     r=VK_COMPONENT_SWIZZLE_IDENTITY,
+    #     g=VK_COMPONENT_SWIZZLE_IDENTITY,
+    #     b=VK_COMPONENT_SWIZZLE_IDENTITY,
+    #     a=VK_COMPONENT_SWIZZLE_IDENTITY)
+
+    # imageview_create = VkImageViewCreateInfo(
+    #     sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+    #     image=image,
+    #     flags=0,
+    #     viewType=VK_IMAGE_VIEW_TYPE_2D,
+    #     format=surface_format.format,
+    #     components=components,
+    #     subresourceRange=subresource_range)
+
+    # image_views.append(vkCreateImageView(logical_device, imageview_create, None))            
+        
 
     return image, image_memory
 
 
-def CreateDescriptorSetLayout(device):
-
-    # layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
-    # layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
-    # layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
-    # layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
-    # layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
-
-    # layoutBindings = [ 
-    #     VkDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    #     VkDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    #     VkDescriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    #     VkDescriptorSetLayoutBinding(3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    #     VkDescriptorSetLayoutBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    # ]
-
-    # layoutInfo = VkDescriptorSetLayoutCreateInfo(
-    #     sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    #     bindingCount=len(layoutBindings),  
-    # )
-
-    # Here we specify a descriptor set layout. This allows us to bind our descriptors to
-    # resources in the shader.
-
-    # Here we specify a binding of type VK_DESCRIPTOR_TYPE_STORAGE_BUFFER to the binding point
-    # 0. This binds to
-    #   layout(std140, binding = 0) buffer buf
-    # in the compute shader.
-
-    descriptor_set_layout_binding = VkDescriptorSetLayoutBinding(
-        binding=0,
-        descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        descriptorCount=1,
-        stageFlags=VK_SHADER_STAGE_COMPUTE_BIT
-    )
+def CreateDescriptorSetLayout(device, descriptor_set_layout_bindings):
 
     descriptor_set_layout_info = VkDescriptorSetLayoutCreateInfo(
         sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        bindingCount=1,  # only a single binding in this descriptor set layout.
-        pBindings=descriptor_set_layout_binding
+        bindingCount=len(descriptor_set_layout_bindings),  
+        pBindings=descriptor_set_layout_bindings
     )
 
     # Create the descriptor set layout.
@@ -313,11 +306,11 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
 
     return descriptor_set, descriptor_pool
 
-def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info):
+def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding):
     write_descriptor_set = VkWriteDescriptorSet(
         sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         dstSet=descriptor_set,
-        dstBinding=0,  # write to the first, and only binding.
+        dstBinding=binding, # write to the specified binding.
         descriptorCount=1,
         descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         pBufferInfo=descriptor_buffer_info
@@ -327,18 +320,18 @@ def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info):
     vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[write_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
 
 
-def UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info):
-    read_descriptor_set = VkReadDescriptorSet(
-        sType=VK_STRUCTURE_TYPE_READ_DESCRIPTOR_SET,
-        dstSet=descriptor_set,
-        dstBinding=0,  # write to the first, and only binding.
-        descriptorCount=1,
-        descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        pBufferInfo=descriptor_buffer_info
-    )
+# def UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding):
+#     read_descriptor_set = VkReadDescriptorSet(
+#         sType=VK_STRUCTURE_TYPE_READ_DESCRIPTOR_SET,
+#         dstSet=descriptor_set,
+#         dstBinding=binding, # write to the specified binding.
+#         descriptorCount=1,
+#         descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+#         pBufferInfo=descriptor_buffer_info
+#     )
 
-    # perform the update of the descriptor set.
-    vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[read_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
+#     # perform the update of the descriptor set.
+#     vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[read_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
 
 
 
@@ -508,6 +501,9 @@ condition_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=n
 pixel_image_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
 accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
+accumulation_normalization_image[:,:,0] = 1.0
+accumulation_normalization_image[:,:,1] = 1.0
+
 #we might need to convert them to C,H,W
 
 # The mandelbrot set will be rendered to this buffer.
@@ -524,10 +520,53 @@ address, length = pixel.buffer_info()
 
 buffer_size = WIDTH * HEIGHT * CHANNELS * 4  # 4 bytes per float
 
-buffer, buffer_memory = CreateBuffer(physical_device, device, buffer_size)
-#buffer, buffer_memory = CreateImage2D(physical_device, device, WIDTH, HEIGHT)
+panorama_buffer, panorama_buffer_memory = CreateBuffer(physical_device, device, buffer_size, pAllocator=None, pBuffer=None)
+accumulation_buffer, accumulation_buffer_memory = CreateBuffer(physical_device, device, buffer_size, pAllocator=None, pBuffer=None)
 
-descriptor_set_layout = CreateDescriptorSetLayout(device)
+
+# Ensure array is contiguous in memory
+if not accumulation_normalization_image.flags['C_CONTIGUOUS']:
+    accumulation_normalization_image = np.ascontiguousarray(accumulation_normalization_image)
+
+ffi_buffer = vkMapMemory(device, accumulation_buffer_memory, offset=0, size=buffer_size, flags=0)
+src_bytes = accumulation_normalization_image.tobytes()
+ffi_buffer[:len(src_bytes)] = src_bytes
+vkUnmapMemory(device, accumulation_buffer_memory)
+
+# Here we specify a descriptor set layout. This allows us to bind our descriptors to
+# resources in the shader.
+
+# Here we specify a binding of type VK_DESCRIPTOR_TYPE_STORAGE_BUFFER to the binding point
+# 0. This binds to
+#   layout(std140, binding = 0) buffer buf
+# in the compute shader.
+descriptor_set_layout_bindings = [] 
+    # VkDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    # VkDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    # VkDescriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    # VkDescriptorSetLayoutBinding(3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    # VkDescriptorSetLayoutBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+#     VkDescriptorSetLayoutBinding(binding=0, descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+# ]
+
+descriptor_set_layout_bindings.append(
+    VkDescriptorSetLayoutBinding(
+    binding=0, 
+    descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+    descriptorCount=1, 
+    stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+)
+
+descriptor_set_layout_bindings.append(
+    VkDescriptorSetLayoutBinding(
+    binding=1, 
+    descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+    descriptorCount=1, 
+    stageFlags=VK_SHADER_STAGE_COMPUTE_BIT)
+)
+
+
+descriptor_set_layout = CreateDescriptorSetLayout(device, descriptor_set_layout_bindings)
 pipeline, pipeline_layout, shader_module = CreateComputePipeline(device, descriptor_set_layout, "lerp.spv")
 
 descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size)
@@ -537,12 +576,20 @@ descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_lay
 
 # Specify the buffer to bind to the descriptor.
 descriptor_buffer_info = VkDescriptorBufferInfo(
-    buffer=buffer,
+    buffer=panorama_buffer,
     offset=0,
     range=buffer_size
 )
+UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=0)
 
-UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info)
+descriptor_buffer_info = VkDescriptorBufferInfo(
+    buffer=accumulation_buffer,
+    offset=0,
+    range=buffer_size
+)
+UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=1)
+
+#UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding=0)
 
 command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, pipeline_layout, WIDTH, HEIGHT, WORKGROUP_SIZE)
 
@@ -550,14 +597,13 @@ command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, p
 RunCommandBuffer(device, command_buffer, queue)
 
 # get the results into a numpy array here
-output_image = GetOutputImage(device, buffer_memory, buffer_size, HEIGHT, WIDTH)
-
-
+output_image = GetOutputImage(device, panorama_buffer_memory, buffer_size, HEIGHT, WIDTH)
 
 # Now we save the acquired color data to a .png.
 image = Image.fromarray(output_image.astype(np.uint8))
 file_path = 'test.png'
-os.remove(file_path)
+if os.path.exists(file_path) :
+    os.remove(file_path)
 image.save(file_path)
 
 print("Minimal Vulkan compute pipeline created successfully.")
