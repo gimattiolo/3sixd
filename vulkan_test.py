@@ -67,6 +67,26 @@ def CreateBuffer(physical_device, device, buffer_size):
 
 
 def CreateDescriptorSetLayout(device):
+
+    # layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
+    # layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
+    # layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
+    # layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
+    # layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
+
+    # layoutBindings = [ 
+    #     VkDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    #     VkDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    #     VkDescriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    #     VkDescriptorSetLayoutBinding(3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    #     VkDescriptorSetLayoutBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
+    # ]
+
+    # layoutInfo = VkDescriptorSetLayoutCreateInfo(
+    #     sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    #     bindingCount=len(layoutBindings),  
+    # )
+
     # Here we specify a descriptor set layout. This allows us to bind our descriptors to
     # resources in the shader.
 
@@ -75,72 +95,77 @@ def CreateDescriptorSetLayout(device):
     #   layout(std140, binding = 0) buffer buf
     # in the compute shader.
 
-    descriptor_set_layoutBinding = VkDescriptorSetLayoutBinding(
+    descriptor_set_layout_binding = VkDescriptorSetLayoutBinding(
         binding=0,
         descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         descriptorCount=1,
         stageFlags=VK_SHADER_STAGE_COMPUTE_BIT
     )
 
-    descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfo(
+    descriptor_set_layout_info = VkDescriptorSetLayoutCreateInfo(
         sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         bindingCount=1,  # only a single binding in this descriptor set layout.
-        pBindings=descriptor_set_layoutBinding
+        pBindings=descriptor_set_layout_binding
     )
 
     # Create the descriptor set layout.
-    descriptor_set_layout = vkCreateDescriptorSetLayout(device, descriptor_set_layout_create_info, None)
+    descriptor_set_layout = vkCreateDescriptorSetLayout(device, descriptor_set_layout_info, None)
     return descriptor_set_layout
 
-def CreateComputePipeline(device, descriptor_set_layout):
+def CreateComputePipeline(device, descriptor_set_layout, shader_file):
     # We create a compute pipeline here.
 
     # Create a shader module. A shader module basically just encapsulates some shader code.
-    with open('mandelbrot_compute.spv', 'rb') as comp:
+    with open(shader_file, 'rb') as comp:
         code = comp.read()
 
-        create_info = VkShaderModuleCreateInfo(
+        shader_module_info = VkShaderModuleCreateInfo(
             sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             codeSize=len(code),
             pCode=code
         )
 
-        compute_shader_module = vkCreateShaderModule(device, create_info, None)
+        shader_module = vkCreateShaderModule(device, shader_module_info, None)
 
     # Now let us actually create the compute pipeline.
     # A compute pipeline is very simple compared to a graphics pipeline.
     # It only consists of a single stage with a compute shader.
     # So first we specify the compute shader stage, and it's entry point(main).
-    shader_stage_create_info = VkPipelineShaderStageCreateInfo(
+    pipeline_shader_stage_info = VkPipelineShaderStageCreateInfo(
         sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         stage=VK_SHADER_STAGE_COMPUTE_BIT,
-        module=compute_shader_module,
+        module=shader_module,
         pName='main'
     )
 
     # The pipeline layout allows the pipeline to access descriptor sets.
     # So we just specify the descriptor set layout we created earlier.
-    pipeline_layout_create_info = VkPipelineLayoutCreateInfo(
+    
+    # pipeline_layout_info = VkPipelineLayoutCreateInfo(
+    #     sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
+    # )
+    
+    pipeline_layout_info = VkPipelineLayoutCreateInfo(
         sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         setLayoutCount=1,
         pSetLayouts=[descriptor_set_layout]
     )
-    pipeline_layout = vkCreatePipelineLayout(device, pipeline_layout_create_info, None)
+    pipeline_layout = vkCreatePipelineLayout(device, pipeline_layout_info, None)
 
-    pipeline_create_info = VkComputePipelineCreateInfo(
+    pipeline_info = VkComputePipelineCreateInfo(
         sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        stage=shader_stage_create_info,
+        stage=pipeline_shader_stage_info,
         layout=pipeline_layout
     )
 
     # Now, we finally create the compute pipeline.
-    pipelines = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, pipeline_create_info, None)
+    pipelines = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, pipeline_info, None)
     if len(pipelines) == 1:
-        return pipelines[0]
+        return pipelines[0], pipeline_layout, shader_module
     else:
         raise Exception("Could not create compute pipeline")
 
-def CreateCommandBuffer(device, queue_family_index, width, height, workgroup_size):
+def CreateCommandBuffer(device, queue_family_index, pipeline_layout, width, height, workgroup_size):
     # We are getting closer to the end. In order to send commands to the device(GPU),
     # we must first record commands into a command buffer.
     # To allocate a command buffer, we must first create a command pool. So let us do that.
@@ -203,7 +228,7 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
         descriptorCount=1
     )
 
-    descriptor_pool_create_info = VkDescriptorPoolCreateInfo(
+    descriptor_pool_info = VkDescriptorPoolCreateInfo(
         sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         maxSets=1,  # we only need to allocate one descriptor set from the pool.
         poolSizeCount=1,
@@ -211,7 +236,7 @@ def CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size):
     )
 
     # create descriptor pool.
-    descriptorPool = vkCreateDescriptorPool(device, descriptor_pool_create_info, None)
+    descriptor_pool = vkCreateDescriptorPool(device, descriptor_pool_info, None)
 
     # With the pool allocated, we can now allocate the descriptor set.
     descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo(
@@ -399,36 +424,6 @@ device_info = VkDeviceCreateInfo(
 device = vkCreateDevice(physical_device, device_info, None)
 queue = vkGetDeviceQueue(device, queue_family_index, 0)
 
-# Create shader module
-shader_code = load_shader("lerp.spv")
-shader_module_info = VkShaderModuleCreateInfo(
-    sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-    codeSize=len(shader_code),
-    pCode=shader_code
-)
-shader_module = vkCreateShaderModule(device, shader_module_info, None)
-
-# Create compute pipeline
-pipeline_layout_info = VkPipelineLayoutCreateInfo(
-    sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
-)
-pipeline_layout = vkCreatePipelineLayout(device, pipeline_layout_info, None)
-
-stage_info = VkPipelineShaderStageCreateInfo(
-    sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-    stage=VK_SHADER_STAGE_COMPUTE_BIT,
-    module=shader_module,
-    pName="main".encode()
-)
-
-pipeline_info = VkComputePipelineCreateInfo(
-    sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-    stage=stage_info,
-    layout=pipeline_layout
-)
-
-pipeline = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, [pipeline_info], None)[0]
-
 # pass the images from numpy to the shader here
 
 HEIGHT = 1080
@@ -446,26 +441,6 @@ accumulation_normalization_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.
 
 #we might need to convert them to C,H,W
 
-# layout(binding = 0, rgba32f) writeonly uniform image2D panorama_image;
-# layout(binding = 1, rgba32f) readonly uniform image2DArray color_image_array;
-# layout(binding = 2, rgba32f) readonly uniform image2DArray condition_image_array;
-# layout(binding = 3, rgba32f) readonly uniform image2DArray pixel_image_array;
-# layout(binding = 4, rgba32f) readonly uniform image2D accumulation_normalization_image;
-
-layoutBindings = [ 
-    VkDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    VkDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    VkDescriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    VkDescriptorSetLayoutBinding(3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-    VkDescriptorSetLayoutBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptorCount=1, stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, pImmutableSamplers=None),
-]
-
-layoutInfo = VkDescriptorSetLayoutCreateInfo(
-    sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    bindingCount=len(layoutBindings),  
-)
-computeDescriptorSetLayout = vkCreateDescriptorSetLayout(device, layoutInfo, None)
-
 # The mandelbrot set will be rendered to this buffer.
 # The memory that backs the buffer is bufferMemory.
 buffer = None
@@ -477,10 +452,12 @@ pixel = array.array('f', [0, 0, 0, 0])
 buffer_size = pixel.buffer_info()[1] * pixel.itemsize * WIDTH * HEIGHT
 
 buffer, buffer_memory = CreateBuffer(physical_device, device, buffer_size)
-compute_descriptor_set_layout = CreateDescriptorSetLayout(device)
-descriptor_set, descriptor_pool = CreateDescriptorSet(device, compute_descriptor_set_layout, buffer, buffer_size)
-pipeline = CreateComputePipeline(device, compute_descriptor_set_layout)
-command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, WIDTH, HEIGHT, WORKGROUP_SIZE)
+
+descriptor_set_layout = CreateDescriptorSetLayout(device)
+pipeline, pipeline_layout, shader_module = CreateComputePipeline(device, descriptor_set_layout, "lerp.spv")
+
+descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_layout, buffer, buffer_size)
+command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, pipeline_layout, WIDTH, HEIGHT, WORKGROUP_SIZE)
 
 # Finally, run the recorded command buffer.
 RunCommandBuffer(device, command_buffer, queue)
@@ -493,4 +470,4 @@ print("Minimal Vulkan compute pipeline created successfully.")
 # Cleanup
 debug_report_callback = None
 enable_validation_layers = False
-Cleanup(instance, buffer_memory, buffer, shader_module, descriptor_pool, compute_descriptor_set_layout, pipeline_layout, pipeline, command_pool, device, debug_report_callback, enable_validation_layers)
+Cleanup(instance, buffer_memory, buffer, shader_module, descriptor_pool, descriptor_set_layout, pipeline_layout, pipeline, command_pool, device, debug_report_callback, enable_validation_layers)
