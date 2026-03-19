@@ -27,14 +27,14 @@ def FindMemoryType(physical_device, memory_type_bits, properties):
 def CreateBuffer(physical_device, device, buffer_size):
     # We will now create a buffer. We will render the mandelbrot set into this buffer
     # in a computer shade later.
-    buffer_create_info = VkBufferCreateInfo(
+    buffer_info = VkBufferCreateInfo(
         sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         size=buffer_size,  # buffer size in bytes.
         usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,  # buffer is used as a storage buffer.
         sharingMode=VK_SHARING_MODE_EXCLUSIVE  # buffer is exclusive to a single queue family at a time.
     )
 
-    buffer = vkCreateBuffer(device, buffer_create_info, None)
+    buffer = vkCreateBuffer(device, buffer_info, None)
 
     # But the buffer doesn't allocate memory for itself, so we must do that manually.
 
@@ -169,7 +169,7 @@ def CreateCommandBuffer(device, queue_family_index, pipeline_layout, width, heig
     # We are getting closer to the end. In order to send commands to the device(GPU),
     # we must first record commands into a command buffer.
     # To allocate a command buffer, we must first create a command pool. So let us do that.
-    command_pool_create_info = VkCommandPoolCreateInfo(
+    command_pool_info = VkCommandPoolCreateInfo(
         sType=VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         flags=0,
         # the queue family of this command pool. All command buffers allocated from this command pool,
@@ -177,7 +177,7 @@ def CreateCommandBuffer(device, queue_family_index, pipeline_layout, width, heig
         queueFamilyIndex=queue_family_index
     )
 
-    command_pool = vkCreateCommandPool(device, command_pool_create_info, None)
+    command_pool = vkCreateCommandPool(device, command_pool_info, None)
 
     # Now allocate a command buffer from the command pool.
     command_buffer_allocate_info = VkCommandBufferAllocateInfo(
@@ -282,11 +282,11 @@ def RunCommandBuffer(device, command_buffer, queue):
     )
 
     # We create a fence.
-    fence_create_info = VkFenceCreateInfo(
+    fence_info = VkFenceCreateInfo(
         sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         flags=0
     )
-    fence = vkCreateFence(device, fence_create_info, None)
+    fence = vkCreateFence(device, fence_info, None)
 
     # We submit the command buffer on the queue, at the same time giving a fence.
     vkQueueSubmit(queue, 1, submit_info, fence)
