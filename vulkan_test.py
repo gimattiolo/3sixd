@@ -406,7 +406,7 @@ class VulkanCompute :
             if self.debug_report_callback:
                 func(self.instance, self.debug_report_callback, None)
 
-        for buf, buf_memory, buf_size in self.buffer_info:
+        for binding, buf, buf_memory, buf_size in self.buffer_info:
             if buf_memory:
                 vkFreeMemory(self.device, buf_memory, None)
             if buf:
@@ -452,9 +452,10 @@ class VulkanCompute :
     def Run(self) :
 
         # Finally, run the recorded command buffer.
+
         self.RunCommandBuffer()
 
-        panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[0]
+        binding, panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[0]
 
         # get the results into a numpy array here
         output_image = self.GetBufferAsNumpy(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
@@ -590,18 +591,17 @@ class VulkanCompute :
         # in the compute shader.
 
         self.buffer_info = [
-            (panorama_buffer, panorama_buffer_memory, buffer_size),
-            (accumulation_normalization_buffer, accumulation_normalization_buffer_memory, buffer_size),
-            (color_array_buffer, color_array_buffer_memory, buffer_array_size),
-            (condition_array_buffer, condition_array_buffer_memory, buffer_array_size),
-            (pixel_array_buffer, pixel_array_buffer_memory, buffer_array_size)]
+            (0, panorama_buffer, panorama_buffer_memory, buffer_size),
+            (1, accumulation_normalization_buffer, accumulation_normalization_buffer_memory, buffer_size),
+            (2, color_array_buffer, color_array_buffer_memory, buffer_array_size),
+            (3, condition_array_buffer, condition_array_buffer_memory, buffer_array_size),
+            (4, pixel_array_buffer, pixel_array_buffer_memory, buffer_array_size)]
 
         self.descriptor_set_layout_bindings = [None] * len(self.buffer_info)
 
-        for i in range(len(self.buffer_info)):
-
-            self.descriptor_set_layout_bindings[i] = VkDescriptorSetLayoutBinding(
-                binding=i, 
+        for binding, buf, buf_memory, buf_size in self.buffer_info:
+            self.descriptor_set_layout_bindings[binding] = VkDescriptorSetLayoutBinding(
+                binding, 
                 descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
                 descriptorCount=1, 
                 stageFlags=VK_SHADER_STAGE_COMPUTE_BIT
@@ -616,14 +616,14 @@ class VulkanCompute :
         # Next, we need to connect our actual storage buffer with the descriptor.
         # We use vkUpdateDescriptorSets() to update the descriptor set.
 
-        for i, (buf, buf_memory, buf_size) in enumerate(self.buffer_info):
+        for binding, buf, buf_memory, buf_size in self.buffer_info:
             # Specify the buffer to bind to the descriptor.
             descriptor_buffer_info = VkDescriptorBufferInfo(
                 buffer=buf,
                 offset=0,
                 range=buf_size
             )
-            self.UpdateWriteDescriptorSet(descriptor_buffer_info, binding=i)
+            self.UpdateWriteDescriptorSet(descriptor_buffer_info, binding)
 
         self.CreateCommandBuffer(queue_family_index)
 
