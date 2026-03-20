@@ -1,10 +1,10 @@
 #version 450
 
 // thee parameters need to match the value in teh setup code
-#define height 256
-#define width 256
-#define channels 4
 #define num_cameras = 6;
+#define height 1080
+#define width 1920
+#define channels 4
 #define workgroup_size 16
 
 layout (local_size_x = workgroup_size, local_size_y = workgroup_size, local_size_z = 1 ) in;

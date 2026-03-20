@@ -633,9 +633,9 @@ if __name__ == "__main__":
 
     # Define parameters for the compute shader
     # need to match the parameters in the shader code
-    height = 256
-    width = 256
     num_cameras = 6
+    height = 1080
+    width = 1920
     channels = 4
     workgroup_size = 16
 
