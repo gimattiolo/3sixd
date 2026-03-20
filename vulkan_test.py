@@ -361,7 +361,7 @@ def RunCommandBuffer(device, command_buffer, queue):
 
     vkDestroyFence(device, fence, None)
 
-def GetOutputImage(device, buffer_memory, buffer_size, H, W):
+def GetOutputImage(device, buffer_memory, buffer_size, H, W, C):
     # Map the buffer memory, so that we can read from it on the CPU.
     p_mapped_memory = vkMapMemory(device, buffer_memory, 0, buffer_size, 0)
 
@@ -369,11 +369,11 @@ def GetOutputImage(device, buffer_memory, buffer_size, H, W):
     # We save the data to a vector.
 
     pa = np.frombuffer(p_mapped_memory, np.float32)
-    pa = pa.reshape((H, W, 4))
-    pa *= 255
 
     # Done reading, so unmap.
     vkUnmapMemory(device, buffer_memory)
+
+    pa = pa.reshape((H, W, C))
 
     return pa
 
@@ -430,6 +430,16 @@ def InitializeBuffer(numpy_array, device, buffer_memory, buffer_size):
     src_bytes = numpy_array.tobytes()
     ffi_buffer[:len(src_bytes)] = src_bytes
     vkUnmapMemory(device, buffer_memory)
+
+def SaveImage(a, file_path):
+    a = np.copy(a)
+    # assume image array is in range [0,1]
+    a *= 255.0
+    a = a.astype(np.uint8)
+    image = Image.fromarray(a)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    image.save(file_path)
 
 # Create Vulkan instance
 app_info = VkApplicationInfo(
@@ -498,21 +508,40 @@ queue = vkGetDeviceQueue(device, queue_family_index, 0)
 
 # pass the images from numpy to the shader here
 
-HEIGHT = 1080
-WIDTH = 1920
+HEIGHT = 256
+WIDTH = 256
 NUM_CAMERAS = 6
 CHANNELS = 4
 WORKGROUP_SIZE = 16
 
+
+color_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+condition_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+pixel_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+
+accumulation_normalization = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+accumulation_normalization[:,:,0] = 1.0
+
 panorama_image = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 
-color_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-condition_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-pixel_array = np.zeros((HEIGHT, WIDTH, CHANNELS, NUM_CAMERAS), dtype=np.float32)
-accumulation_normalization = np.zeros((HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
+for n in range(NUM_CAMERAS):
+    # for c in range(CHANNELS):
+    for x in range(WIDTH):
+        r = x / (WIDTH-1.0)        
+        for y in range(HEIGHT):
+            g = y / (HEIGHT-1.0)        
+            
+            color_array[n,y,x,0] = r
+            color_array[n,y,x,1] = g
 
-accumulation_normalization[:,:,0] = 0.0
-accumulation_normalization[:,:,1] = 1.0
+            # condition_array[:,:,c,n] = (NUM_CAMERAS * CHANNELS * n + c) / 255.0
+            # pixel_array[:,:,c,n] = (NUM_CAMERAS * CHANNELS * n + c) / 255.0
+
+            color_array[n,y,x,2] = n / (NUM_CAMERAS-1.0)
+
+    color_array[n,:,:,3] = 1.0
+
+    SaveImage(color_array[n,:,:,:], f'color_{n}.png')
 
 #we might need to convert them to C,H,W
 
@@ -584,14 +613,10 @@ command_buffer, command_pool = CreateCommandBuffer(device, queue_family_index, p
 RunCommandBuffer(device, command_buffer, queue)
 
 # get the results into a numpy array here
-output_image = GetOutputImage(device, panorama_buffer_memory, buffer_size, HEIGHT, WIDTH)
+output_image = GetOutputImage(device, panorama_buffer_memory, buffer_size, HEIGHT, WIDTH, CHANNELS)
 
 # Now we save the acquired color data to a .png.
-image = Image.fromarray(output_image.astype(np.uint8))
-file_path = 'test.png'
-if os.path.exists(file_path) :
-    os.remove(file_path)
-image.save(file_path)
+SaveImage(output_image, 'test.png')
 
 debug_report_callback = None
 enable_validation_layers = False

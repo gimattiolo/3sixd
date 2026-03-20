@@ -1,7 +1,7 @@
 #version 450
 
-#define WIDTH 1920
-#define HEIGHT 1080
+#define WIDTH 256
+#define HEIGHT 256
 #define WORKGROUP_SIZE 32
 const int NUM_CAMERAS = 6;
 
@@ -38,38 +38,44 @@ layout(std140, binding = 4) readonly buffer PixelArraySSBOIn
 
 void main() 
 {
-    /*
-    In order to fit the work into workgroups, some unnecessary threads are launched.
-    We terminate those threads here.
-    */
-    if(gl_GlobalInvocationID.x >= WIDTH || gl_GlobalInvocationID.y >= HEIGHT)
-    {
-        return;
-    }
+   /*
+   In order to fit the work into workgroups, some unnecessary threads are launched.
+   We terminate those threads here.
+   */
+   if(gl_GlobalInvocationID.x >= WIDTH || gl_GlobalInvocationID.y >= HEIGHT)
+   {
+      return;
+   }
 
-    ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    vec4 zero4 = vec4(0.0);
+   ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+   vec4 zero4 = vec4(0.0);
 
-    int output_index2 = WIDTH * pixel_coord2.y + pixel_coord2.x;
+   int output_index2 = WIDTH * pixel_coord2.y + pixel_coord2.x;
 
-    vec4 accumulation_normalization = accumulation_normalization_buffer[output_index2].value;
+   vec4 accumulation_normalization = accumulation_normalization_buffer[output_index2].value;
 
-    vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
-    for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
-    {
-        int pixel_index3 = WIDTH * HEIGHT * pin_id + WIDTH * pixel_coord2.y + pixel_coord2.x;
+   vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
 
-        vec4 pixel_value = pixel_array_buffer[pixel_index3].value;
-        vec4 condition = condition_array_buffer[pixel_index3].value;
+   int pin_id=3;
+   //for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
+   {
+      int pixel_index3 = WIDTH * HEIGHT * pin_id + WIDTH * pixel_coord2.y + pixel_coord2.x;
 
-        ivec2 color_coord2 = ivec2(pixel_value.x, pixel_value.y);
-        int color_index3 = WIDTH * HEIGHT * pin_id + WIDTH * color_coord2.y + color_coord2.x;
-        vec4 color = color_array_buffer[color_index3].value;
-        panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
-    }
+      vec4 pixel_value = pixel_array_buffer[pixel_index3].value;
+      vec4 condition = condition_array_buffer[pixel_index3].value;
 
-    //panorama.xyz *= accumulation_normalization.xyz;
-    panorama.xyz = accumulation_normalization.xyz;
+      ivec2 color_coord2 = ivec2(pixel_value.x, pixel_value.y);
 
-    panorama_buffer[output_index2].value = panorama;
+      //int color_index3 = WIDTH * HEIGHT * pin_id + WIDTH * color_coord2.y + color_coord2.x;
+      int color_index3 = WIDTH * HEIGHT * pin_id + output_index2;
+      
+      vec4 color = color_array_buffer[color_index3].value;
+      //panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
+      panorama.rgb = color.rgb; 
+      //panorama += mix(zero4, color, zero4);
+      
+   }
+
+   //panorama.xyz *= accumulation_normalization.xyz;
+   panorama_buffer[output_index2].value = panorama;
 }
