@@ -1,7 +1,7 @@
 #version 450
 
-#define WIDTH 256
-#define HEIGHT 256
+#define HEIGHT 1080
+#define WIDTH 1920
 #define WORKGROUP_SIZE 32
 const int NUM_CAMERAS = 6;
 

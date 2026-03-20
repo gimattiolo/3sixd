@@ -503,8 +503,8 @@ queue = vkGetDeviceQueue(device, queue_family_index, 0)
 
 # pass the images from numpy to the shader here
 
-HEIGHT = 256
-WIDTH = 256
+HEIGHT = 1080
+WIDTH = 1920
 NUM_CAMERAS = 6
 CHANNELS = 4
 WORKGROUP_SIZE = 16
