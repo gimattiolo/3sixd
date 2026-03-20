@@ -16,6 +16,12 @@ class VulkanCompute :
 
     def __init__(self) :
 
+        self.num_cameras = 0
+        self.height = 0
+        self.width = 0
+        self.channels = 0
+        self.workgroup_size = 0
+
         self.app_info = None
         self.instance = None
         self.buffer_info = None
@@ -28,7 +34,6 @@ class VulkanCompute :
         self.device = None
         self.debug_report_callback = None
         self.enable_validation_layers = False
-
         self.physical_device = None
         self.descriptor_set_layout_bindings = None
         self.shader_file = None
@@ -374,7 +379,7 @@ class VulkanCompute :
 
         vkDestroyFence(self.device, fence, None)
 
-    def GetOutputImage(self, buffer_memory, buffer_size, H, W, C):
+    def GetBufferAsNumpy(self, buffer_memory, buffer_size, H, W, C):
         # Map the buffer memory, so that we can read from it on the CPU.
         p_mapped_memory = vkMapMemory(self.device, buffer_memory, 0, buffer_size, 0)
 
@@ -434,7 +439,6 @@ class VulkanCompute :
         ffi_buffer[:len(src_bytes)] = src_bytes
         vkUnmapMemory(self.device, buffer_memory)
 
-    @staticmethod
     def SaveImage(a, file_path):
         a = np.copy(a)
         # assume image array is in range [0,1]
@@ -453,12 +457,14 @@ class VulkanCompute :
         panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[0]
 
         # get the results into a numpy array here
-        output_image = self.GetOutputImage(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
+        output_image = self.GetBufferAsNumpy(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
 
         # Now we save the acquired color data to a .png.
         VulkanCompute.SaveImage(output_image, 'test.png')
 
-    def Setup(self, num_cameras, height, width, channels, workgroup_size):
+    def Setup(self, shader_file, num_cameras, height, width, channels, workgroup_size):
+
+        self.shader_file = shader_file
 
         self.num_cameras = num_cameras
         self.height = height
@@ -603,8 +609,6 @@ class VulkanCompute :
 
         self.CreateDescriptorSetLayout()
 
-        self.shader_file = "lerp.spv"
-
         self.CreateComputePipeline()
 
         self.CreateDescriptorSet(panorama_buffer, buffer_size)
@@ -633,7 +637,8 @@ if __name__ == "__main__":
     channels = 4
     workgroup_size = 16
 
-    compute.Setup(num_cameras, height, width, channels, workgroup_size)
+    shader_file = "lerp.spv"
+    compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size)
 
     compute.Run()
 
