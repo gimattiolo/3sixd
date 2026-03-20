@@ -1,8 +1,8 @@
 #version 450
 
-#define HEIGHT 1080
-#define WIDTH 1920
-#define WORKGROUP_SIZE 32
+#define HEIGHT 256
+#define WIDTH 256
+#define WORKGROUP_SIZE 16
 const int NUM_CAMERAS = 6;
 
 layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1 ) in;
