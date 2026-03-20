@@ -534,9 +534,6 @@ for n in range(NUM_CAMERAS):
             color_array[n,y,x,0] = r
             color_array[n,y,x,1] = g
 
-            # condition_array[:,:,c,n] = (NUM_CAMERAS * CHANNELS * n + c) / 255.0
-            # pixel_array[:,:,c,n] = (NUM_CAMERAS * CHANNELS * n + c) / 255.0
-
             color_array[n,y,x,2] = n / (NUM_CAMERAS-1.0)
 
     color_array[n,:,:,3] = 1.0
