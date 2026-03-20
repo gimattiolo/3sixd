@@ -12,7 +12,7 @@ from PIL import Image
 
 from vulkan import *
 
-class VulkanSetup :
+class VulkanCompute :
 
     def __init__(self) :
 
@@ -282,8 +282,8 @@ class VulkanSetup :
         # The number of workgroups is specified in the arguments.
         # If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
         vkCmdDispatch(self.command_buffer,
-                        int(math.ceil(self.WIDTH / float(self.WORKGROUP_SIZE))),  # int for py2 compatible
-                        int(math.ceil(self.HEIGHT / float(self.WORKGROUP_SIZE))),  # int for py2 compatible
+                        int(math.ceil(self.width / float(self.workgroup_size))),  # int for py2 compatible
+                        int(math.ceil(self.height / float(self.workgroup_size))),  # int for py2 compatible
                         1)
 
         vkEndCommandBuffer(self.command_buffer)
@@ -453,12 +453,19 @@ class VulkanSetup :
         panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[0]
 
         # get the results into a numpy array here
-        output_image = self.GetOutputImage(panorama_buffer_memory, buffer_size, self.HEIGHT, self.WIDTH, self.CHANNELS)
+        output_image = self.GetOutputImage(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
 
         # Now we save the acquired color data to a .png.
-        VulkanSetup.SaveImage(output_image, 'test.png')
+        VulkanCompute.SaveImage(output_image, 'test.png')
 
-    def Setup(self) :
+    def Setup(self, num_cameras, height, width, channels, workgroup_size):
+
+        self.num_cameras = num_cameras
+        self.height = height
+        self.width = width
+        self.channels = channels
+        self.workgroup_size = workgroup_size
+
         # Create Vulkan instance
         self.app_info = VkApplicationInfo(
             sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -525,44 +532,37 @@ class VulkanSetup :
         self.queue = vkGetDeviceQueue(self.device, queue_family_index, 0)
 
         # pass the images from numpy to the shader here
+        color_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
+        condition_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
+        pixel_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
 
-        self.HEIGHT = 256
-        self.WIDTH = 256
-        self.NUM_CAMERAS = 6
-        self.CHANNELS = 4
-        self.WORKGROUP_SIZE = 16
-
-        color_array = np.zeros((self.NUM_CAMERAS, self.HEIGHT, self.WIDTH, self.CHANNELS), dtype=np.float32)
-        condition_array = np.zeros((self.NUM_CAMERAS, self.HEIGHT, self.WIDTH, self.CHANNELS), dtype=np.float32)
-        pixel_array = np.zeros((self.NUM_CAMERAS, self.HEIGHT, self.WIDTH, self.CHANNELS), dtype=np.float32)
-
-        accumulation_normalization = np.zeros((self.HEIGHT, self.WIDTH, self.CHANNELS), dtype=np.float32)
+        accumulation_normalization = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
         accumulation_normalization[:,:,0] = 1.0
 
-        panorama_image = np.zeros((self.HEIGHT, self.WIDTH, self.CHANNELS), dtype=np.float32)
+        panorama_image = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
 
-        for n in range(self.NUM_CAMERAS):
-            # for c in range(CHANNELS):
-            for x in range(self.WIDTH):
-                r = x / (self.WIDTH-1.0)        
-                for y in range(self.HEIGHT):
-                    g = y / (self.HEIGHT-1.0)        
+        for n in range(self.num_cameras):
+            # for c in range(self.channels):
+            for x in range(self.width):
+                r = x / (self.width-1.0)        
+                for y in range(self.height):
+                    g = y / (self.height-1.0)        
                     
                     color_array[n,y,x,0] = r
                     color_array[n,y,x,1] = g
-                    color_array[n,y,x,2] = n / (self.NUM_CAMERAS-1.0)
+                    color_array[n,y,x,2] = n / (self.num_cameras-1.0)
 
             color_array[n,:,:,3] = 1.0
 
-            VulkanSetup.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
+            VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
 
         #we might need to convert them to C,H,W
 
         pixel = array.array('f', [0, 0, 0, 0]) # vec4
         address, num_bytes = pixel.buffer_info()
 
-        buffer_size = self.WIDTH * self.HEIGHT * self.CHANNELS * num_bytes  
-        buffer_array_size = self.NUM_CAMERAS * self.WIDTH * self.HEIGHT * self.CHANNELS * num_bytes
+        buffer_size = self.width * self.height * self.channels * num_bytes  
+        buffer_array_size = self.num_cameras * self.width * self.height * self.channels * num_bytes
 
         panorama_buffer, panorama_buffer_memory = self.CreateBuffer(buffer_size, pAllocator=None, pBuffer=None)
         accumulation_normalization_buffer, accumulation_normalization_buffer_memory = self.CreateBuffer(buffer_size, pAllocator=None, pBuffer=None)
@@ -625,12 +625,18 @@ class VulkanSetup :
 
 
 if __name__ == "__main__":
-    VulkanSetup = VulkanSetup()
+    compute = VulkanCompute()
 
-    VulkanSetup.Setup()
+    height = 256
+    width = 256
+    num_cameras = 6
+    channels = 4
+    workgroup_size = 16
 
-    VulkanSetup.Run()
+    compute.Setup(num_cameras, height, width, channels, workgroup_size)
 
-    VulkanSetup.Cleanup()
+    compute.Run()
+
+    compute.Cleanup()
 
     print("Vulkan compute pipeline created successfully.")
