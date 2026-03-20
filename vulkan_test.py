@@ -1,12 +1,12 @@
 import sys
 import os
 
-
-import numpy as np
 import array
 import math
 
 import ctypes
+
+import numpy as np
 
 from PIL import Image
 
@@ -69,7 +69,6 @@ def CreateBuffer(physical_device, device, buffer_size, pAllocator, pBuffer):
     vkBindBufferMemory(device, buffer, buffer_memory, 0)
 
     return buffer, buffer_memory
-
 
 def CreateImage2D(physical_device, device, width, height):
     # We will now create a buffer. We will render the mandelbrot set into this buffer
@@ -152,7 +151,6 @@ def CreateImage2D(physical_device, device, width, height):
     # image_views.append(vkCreateImageView(logical_device, imageview_create, None))            
 
     return image, image_memory
-
 
 def CreateDescriptorSetLayout(device, descriptor_set_layout_bindings):
 
@@ -318,7 +316,6 @@ def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, bin
     # perform the update of the descriptor set.
     vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[write_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
 
-
 # def UpdateReadDescriptorSet(device, descriptor_set, descriptor_buffer_info, binding):
 #     read_descriptor_set = VkReadDescriptorSet(
 #         sType=VK_STRUCTURE_TYPE_READ_DESCRIPTOR_SET,
@@ -331,8 +328,6 @@ def UpdateWriteDescriptorSet(device, descriptor_set, descriptor_buffer_info, bin
 
 #     # perform the update of the descriptor set.
 #     vkUpdateDescriptorSets(device, descriptorWriteCount=1, pDescriptorWrites=[read_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
-
-
 
 def RunCommandBuffer(device, command_buffer, queue):
     # Now we shall finally submit the recorded command buffer to a queue.
@@ -514,7 +509,6 @@ NUM_CAMERAS = 6
 CHANNELS = 4
 WORKGROUP_SIZE = 16
 
-
 color_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 condition_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
 pixel_array = np.zeros((NUM_CAMERAS, HEIGHT, WIDTH, CHANNELS), dtype=np.float32)
@@ -591,7 +585,6 @@ descriptor_set, descriptor_pool = CreateDescriptorSet(device, descriptor_set_lay
 
 # Next, we need to connect our actual storage buffer with the descriptor.
 # We use vkUpdateDescriptorSets() to update the descriptor set.
-
 
 for i, (buf, buf_memory, buf_size) in enumerate(buffer_info):
     # Specify the buffer to bind to the descriptor.
