@@ -631,6 +631,8 @@ class VulkanCompute :
 if __name__ == "__main__":
     compute = VulkanCompute()
 
+    # Define parameters for the compute shader
+    # need to match the parameters in the shader code
     height = 256
     width = 256
     num_cameras = 6

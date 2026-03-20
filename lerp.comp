@@ -1,11 +1,13 @@
 #version 450
 
-#define HEIGHT 256
-#define WIDTH 256
-#define WORKGROUP_SIZE 16
-const int NUM_CAMERAS = 6;
+// thee parameters need to match the value in teh setup code
+#define height 256
+#define width 256
+#define channels 4
+#define num_cameras = 6;
+#define workgroup_size 16
 
-layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1 ) in;
+layout (local_size_x = workgroup_size, local_size_y = workgroup_size, local_size_z = 1 ) in;
 
 struct Pixel{
   vec4 value;
@@ -42,7 +44,7 @@ void main()
    In order to fit the work into workgroups, some unnecessary threads are launched.
    We terminate those threads here.
    */
-   if(gl_GlobalInvocationID.x >= WIDTH || gl_GlobalInvocationID.y >= HEIGHT)
+   if(gl_GlobalInvocationID.x >= width || gl_GlobalInvocationID.y >= height)
    {
       return;
    }
@@ -50,24 +52,24 @@ void main()
    ivec2 pixel_coord2 = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
    vec4 zero4 = vec4(0.0);
 
-   int output_index2 = WIDTH * pixel_coord2.y + pixel_coord2.x;
+   int output_index2 = width * pixel_coord2.y + pixel_coord2.x;
 
    vec4 accumulation_normalization = accumulation_normalization_buffer[output_index2].value;
 
    vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
 
    int pin_id=3;
-   //for(int pin_id=0; pin_id < NUM_CAMERAS; ++pin_id)
+   //for(int pin_id=0; pin_id < num_cameras; ++pin_id)
    {
-      int pixel_index3 = WIDTH * HEIGHT * pin_id + WIDTH * pixel_coord2.y + pixel_coord2.x;
+      int pixel_index3 = width * height * pin_id + width * pixel_coord2.y + pixel_coord2.x;
 
       vec4 pixel_value = pixel_array_buffer[pixel_index3].value;
       vec4 condition = condition_array_buffer[pixel_index3].value;
 
       ivec2 color_coord2 = ivec2(pixel_value.x, pixel_value.y);
 
-      //int color_index3 = WIDTH * HEIGHT * pin_id + WIDTH * color_coord2.y + color_coord2.x;
-      int color_index3 = WIDTH * HEIGHT * pin_id + output_index2;
+      //int color_index3 = width * height * pin_id + width * color_coord2.y + color_coord2.x;
+      int color_index3 = width * height * pin_id + output_index2;
       
       vec4 color = color_array_buffer[color_index3].value;
       //panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
