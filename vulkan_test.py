@@ -489,7 +489,6 @@ class VulkanCompute :
 
         self.enabled_layers = []
 
-
         if self.enable_validation_layers:
             print(f'WARNING: Vulkan validation layers are {"enabled" if self.enable_validation_layers else "disabled"}. Make sure to disable validation layers in release builds for better performance.')
             # We get all supported layers with vkEnumerateInstanceLayerProperties.

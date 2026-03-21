@@ -839,14 +839,9 @@ class Script :
             key = (c0, c1)
             invKey = (c1, c0)
 
-            if Script.args.benchmark :
-                R = np.eye(3, 3, dtype=np.float32)
-                T = np.zeros((3, 1), dtype=np.float32)
-            else :
-
-                stereoFilename = os.path.join(Script.args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
-                stereoCalibrationLoaded, R, T, E, F, S = Utilities.LoadStereoCalibration(stereoFilename)
-                stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
+            stereoFilename = os.path.join(Script.args.extrinsic_path, f'stereoCalibration{c0}_{c1}.json')
+            stereoCalibrationLoaded, R, T, E, F, S = Utilities.LoadStereoCalibration(stereoFilename)
+            stereoCalibrationOK = stereoCalibrationOK and stereoCalibrationLoaded
             
             if not stereoCalibrationOK :
                 break
