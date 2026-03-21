@@ -503,7 +503,7 @@ def panorama_main(daemon, process_args):
 
     print(f'{daemon.name} starting...')
 
-    colors = {}
+    colors = cp.zeros((len(args.cameraData), args.H, args.W, 3), dtype=np.float32)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
@@ -521,7 +521,7 @@ def panorama_main(daemon, process_args):
 
         args.cameraLockObject.acquire() 
         for pin_id in args.cameraData :
-            colors[pin_id] = cp.array(args.cameraData[pin_id].frame)
+            colors[pin_id,:,:,:] = cp.array(args.cameraData[pin_id].frame)
         args.cameraLockObject.release() 
 
         #print(f'Cam:{time.time() - start_time} s')
