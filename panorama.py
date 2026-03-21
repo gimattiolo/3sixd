@@ -26,7 +26,7 @@ from VulkanCompute import VulkanCompute
 
 two_pi = 2 * math.pi
 
-USE_CUDA = False
+USE_CUDA = True
 
 class CameraDatum :
 
@@ -36,7 +36,7 @@ class CameraDatum :
         self.identifier = ''
         self.file = ''
         self.capture = None
-        self.frame = None # always normalized to [0,1]
+        self.frame_bgr = None # always normalized to [0,1]
         self.IntrinsicMatrix = None
         self.Distortion = None
         self.ReprojectionError = None
@@ -49,7 +49,7 @@ class CameraDatum :
         self.reset()
 
     def release(self) :
-        
+        self.frame_bgr = None
         if self.capture :
             self.capture.release()
         self.reset()
@@ -506,7 +506,7 @@ def panorama_main(daemon, process_args):
 
     print(f'{daemon.name} starting...')
 
-    colors_numpy = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
+    colors_bgr_numpy = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
@@ -531,35 +531,40 @@ def panorama_main(daemon, process_args):
         pixel_coords_cuda = cp.array(pixel_coords)
         conditions_cuda = cp.array(conditions)
         accumulation_normalization_cuda = cp.array(accumulation_normalization)
-        panorama_cuda = cp.array(panorama)
+        panorama_bgr_cuda = cp.array(panorama)
 
     else :
+
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
-        compute.Setup(colors_numpy, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
+        compute.Setup(colors_bgr_numpy, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
 
     while daemon.running :
 
         args.cameraLockObject.acquire() 
         for pin_id in args.cameraData :
-            colors_numpy[pin_id,:,:,0:3] = args.cameraData[pin_id].frame
+            cameraDatum = args.cameraData[pin_id]
+            colors_bgr_numpy[pin_id,:,:,0:3] = cameraDatum.frame_bgr
+
+            # print(f'{pin_id}|{colors_bgr_numpy[pin_id,0,0,0:3]}')
+
         args.cameraLockObject.release() 
 
         start_time = time.time()
 
         if USE_CUDA :        
 
-            colors_cuda = cp.array(colors_numpy)
+            colors_bgr_cuda = cp.array(colors_bgr_numpy)
 
             ### shader begins ###
 
             # make panorama
-            panorama_cuda[:] = 0.0 
+            panorama_bgr_cuda[:] = 0.0 
             for pin_id in args.cameraData :
 
                 pixel = pixel_coords_cuda[pin_id,:,:,:]
-                color = colors_cuda[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
+                color = colors_bgr_cuda[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
 
                 ### debug ###
 
@@ -571,29 +576,34 @@ def panorama_main(daemon, process_args):
 
                 #############
 
-                Lerp_vectorized(conditions_cuda[pin_id,:,:,:], 0.0, color, panorama_cuda)
+                Lerp_vectorized(conditions_cuda[pin_id,:,:,:], 0.0, color, panorama_bgr_cuda)
                 #Lerp_vectorized(zeros, zeros, color, panorama)
 
-            panorama_cuda *= accumulation_normalization_cuda
+            panorama_bgr_cuda *= accumulation_normalization_cuda
 
-            panorama_numpy = cp.asnumpy(panorama_cuda)
+            panorama_bgr_numpy = cp.asnumpy(panorama_bgr_cuda)
 
         else :
+            binding_id = 1
+            binding, buffer, buffer_memory, buffer_array_size = compute.buffer_info[binding_id]
+            assert binding == binding_id
+            compute.InitializeBuffer(colors_bgr_numpy, buffer_memory, buffer_array_size)
+        
 
             compute.RunCommandBuffer()
 
             # get the results into a numpy array here
-            panorama_numpy = compute.GetBufferAsNumpy(binding_id=4)
+            panorama_bgr_numpy = compute.GetBufferAsNumpy(binding_id=4)
 
-            #VulkanCompute.SaveImage(panorama_numpy, 'test.png')
+            #VulkanCompute.SaveImage(panorama_bgr_numpy, 'test.png')
 
         ### shader ends ###
         pan_duration_s = time.time() - start_time
 
-        panorama_numpy = (panorama_numpy[:,:,0:3]*255).astype(np.uint8)
+        panorama_bgr_numpy = (panorama_bgr_numpy[:,:,0:3]*255).astype(np.uint8)
 
-        args.panoramas.put(panorama_numpy, block=False)
-        args.bytes.put(panorama_numpy.tobytes(), block=False)
+        args.panoramas.put(panorama_bgr_numpy, block=False)
+        args.bytes.put(panorama_bgr_numpy.tobytes(), block=False)
 
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
@@ -624,19 +634,22 @@ def camera_main(daemon, process_args):
             cameraDatum = args.cameraData[pin_id]
 
             if args.benchmark :
-                cameraDatum.frame = args.empty_frame.copy()
+
+                cameraDatum.frame_bgr = args.black_bgr_frame.copy()
+                cameraDatum.frame_bgr[:,:,2] = (pin_id + 1.0) / len(args.cameraData)
+
             else :
 
                 if cameraDatum.capture.isOpened() :
                     # Capture frame-by-frame
-                    ret, cameraDatum.frame = cameraDatum.capture.read()
-                    cameraDatum.frame /= 255.0
+                    ret, cameraDatum.frame_bgr = cameraDatum.capture.read()
+                    cameraDatum.frame_bgr /= 255.0
                     if not ret :
                         print(f'{pin_id} not reading frames')
-                        cameraDatum.frame = args.empty_frame.copy()
+                        cameraDatum.frame_bgr = args.empty_frame_bgr.copy()
 
                     if args.show_pin :
-                        cv2.putText(cameraDatum.frame, 
+                        cv2.putText(cameraDatum.frame_bgr, 
                             f'Pin{pin_id}', 
                             origin, 
                             font, 
@@ -674,17 +687,17 @@ class DaemonBase :
         self.name = name
 
 
-# class DaemonThread (DaemonBase) :
+class DaemonThread (DaemonBase) :
 
-#     def __init__(self, name, main, args) :
-#         super().__init__(name, main)
-#         self.thread = threading.Thread(target=main, args=args, daemon=True)
+    def __init__(self, name, main, args) :
+        super().__init__(name, main)
+        self.thread = threading.Thread(target=main, args=(self, args,), daemon=True)
 
 class DaemonProcess (DaemonBase) :
 
-    def __init__(self, name, main, delta_time_sec) :
+    def __init__(self, name, main, args) :
         super().__init__(name, main)
-        self.thread = multiprocessing.Process(target=main, args=(self, delta_time_sec,))
+        self.thread = multiprocessing.Process(target=main, args=(self, args,))
 
 
 class Script :
@@ -746,8 +759,9 @@ class Script :
         size_default = (Script.args.H,Script.args.W) 
 
         # empty frame is red
-        Script.args.empty_frame = np.zeros((Script.args.H, Script.args.W, 3), dtype=np.float32)
-        Script.args.empty_frame[:, :, 2] = 1.0 
+        Script.args.black_bgr_frame = np.zeros((Script.args.H, Script.args.W, 3), dtype=np.float32)
+        Script.args.empty_frame_bgr = Script.args.black_bgr_frame.copy() 
+        Script.args.empty_frame_bgr[:, :, 2] = 1.0 
 
         if not os.path.exists(Script.args.path) :
             os.mkdir(Script.args.path)
@@ -776,7 +790,7 @@ class Script :
             for k in range(len(pin_ids)) :
                 pin_id = pin_ids[k]
                 cameraDatum = Script.args.cameraData[pin_id]
-                cameraDatum.frame = Script.args.empty_frame.copy()
+                cameraDatum.frame_bgr = Script.args.empty_frame_bgr.copy()
         else :
             # (0): none             - Identity (no rotation)
             # (1): counterclockwise - Rotate counter-clockwise 90 degrees
@@ -798,7 +812,7 @@ class Script :
                 pipeline=CalibrationUtilities.make_gstreamer_pipeline(sensor_id=cameraDatum.sensor_id, flip_method=pinDatum.flip)
                 cameraDatum.capture = cv2.VideoCapture(pipeline, api_preference)
                 print(f'sensor:{cameraDatum.sensor_id},pin:{pin_id},open:{cameraDatum.capture.isOpened()}')
-                cameraDatum.frame = Script.args.empty_frame.copy()
+                cameraDatum.frame_bgr = Script.args.empty_frame_bgr.copy()
         # create views in the window
 
         Script.args.panoramas = multiprocessing.Queue(maxsize=0)
@@ -1094,14 +1108,14 @@ class Script :
         # Create threads
         Script.daemons = []
 
-        camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, delta_time_sec_60fps))
+        camera_daemon = DaemonThread('CameraDaemon', camera_main, (Script.args, delta_time_sec_60fps))
         Script.daemons.append(camera_daemon)
 
-        panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, delta_time_sec_60fps))
+        panorama_daemon = DaemonThread('PanoramaDaemon', panorama_main, (Script.args, delta_time_sec_60fps))
         Script.daemons.append(panorama_daemon)
 
         if Script.args.stream :
-            encoding_daemon = DaemonProcess('EncodingDaemon', encoding_main, (Script.args, delta_time_sec_60fps))
+            encoding_daemon = DaemonThread('EncodingDaemon', encoding_main, (Script.args, delta_time_sec_60fps))
             Script.daemons.append(encoding_daemon)
 
         # Start threads
@@ -1112,8 +1126,8 @@ class Script :
         #in msec
         waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
 
-        panorama = Script.args.empty_frame.copy()
-        panorama = (panorama*255).astype(np.uint8)
+        panorama_bgr = Script.args.black_bgr_frame.copy()
+        panorama_bgr = (panorama_bgr*255).astype(np.uint8)
 
         while running :
 
@@ -1139,14 +1153,14 @@ class Script :
 
             try :
                 #print(f'queue_size={Script.args.panoramas.qsize()}')
-                panorama = Script.args.panoramas.get(block=False)
+                panorama_bgr = Script.args.panoramas.get(block=False)
             except Exception as e :
                 pass
 
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
 
-                ret = cv2.imwrite(filename=filename, img=panorama)
+                ret = cv2.imwrite(filename=filename, img=panorama_bgr)
 
                 if ret :
                     print(f'Screenshot saved:{filename}')
@@ -1154,7 +1168,7 @@ class Script :
                 else : 
                     print(f'Unable to save screenshot:{filename}')
     
-            cv2.imshow(window_name, panorama)
+            cv2.imshow(window_name, panorama_bgr)
 
             #print(f'{time.time() - start_time}')
 
