@@ -411,11 +411,11 @@ class VulkanCompute :
             if self.debug_report_callback:
                 func(self.instance, self.debug_report_callback, None)
 
-        for binding, buf, buf_memory, buf_size in self.buffer_info:
-            if buf_memory:
-                vkFreeMemory(self.device, buf_memory, None)
-            if buf:
-                vkDestroyBuffer(self.device, buf, None)
+        for binding, buffer, buffer_memory, buf_size in self.buffer_info:
+            if buffer_memory:
+                vkFreeMemory(self.device, buffer_memory, None)
+            if buffer:
+                vkDestroyBuffer(self.device, buffer, None)
         if self.shader_module:
             vkDestroyShaderModule(self.device, self.shader_module, None)
         if self.descriptor_pool:
@@ -604,7 +604,7 @@ class VulkanCompute :
 
         self.descriptor_set_layout_bindings = [None] * len(self.buffer_info)
 
-        for binding, buf, buf_memory, buf_size in self.buffer_info:
+        for binding, buffer, buffer_memory, buffer_size in self.buffer_info:
             self.descriptor_set_layout_bindings[binding] = VkDescriptorSetLayoutBinding(
                 binding, 
                 descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
@@ -621,12 +621,12 @@ class VulkanCompute :
         # Next, we need to connect our actual storage buffer with the descriptor.
         # We use vkUpdateDescriptorSets() to update the descriptor set.
 
-        for binding, buf, buf_memory, buf_size in self.buffer_info:
+        for binding, buffer, buffer_memory, buffer_size in self.buffer_info:
             # Specify the buffer to bind to the descriptor.
             descriptor_buffer_info = VkDescriptorBufferInfo(
-                buffer=buf,
+                buffer,
                 offset=0,
-                range=buf_size
+                range=buffer_size
             )
             self.UpdateWriteDescriptorSet(descriptor_buffer_info, binding)
 
