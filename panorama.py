@@ -413,7 +413,7 @@ def encoding_main(daemon, process_args):
     #     #        stream_loop=-1
     #     #     )
     #     .input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{_args.W}x{_args.H}')
-    #     #.output(rtmp_url, format="flv", vcodec="libx264", acodec="aac", preset="veryfast")         
+    #     #.output(rtmp_url, format='flv', vcodec='libx264', acodec='aac', preset='veryfast')         
     #     .output(
     #         f'{url}',                 
     #         vcodec='libx264', # Or 'copy' if input is already H.264
@@ -444,8 +444,8 @@ def encoding_main(daemon, process_args):
 
         output_file = split_input[1].output(stream,
             args.video_path, 
-            format="mp4",
-            #vcodec="copy"  # Copy codecs without re-encoding
+            format='mp4',
+            #vcodec='copy'  # Copy codecs without re-encoding
         ).overwrite_output()
 
         process = ffmpeg.merge_outputs(output_udp, output_file).run_async(pipe_stdin=True)
@@ -471,7 +471,7 @@ def encoding_main(daemon, process_args):
     # ]
 
     # ffmpeg_command = [
-    #     'ffmpeg', '-y', "-i", "-", 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
+    #     'ffmpeg', '-y', '-i', '-', 'f=rawvideo', 'pix_fmt=bgr24', f's={Script.W}x{Script.H}', '-map', '0', '-c:v', 'copy', '-c:a', 'copy', '-f', 'tee', f'[f=mpegts]{url}|[f=mp4]{output_file}',
     # ]
 
     # process = subprocess.Popen(
@@ -495,13 +495,13 @@ def encoding_main(daemon, process_args):
     process.stdin.close()
     process.wait()
 
-    print(f"{daemon.name} done.")
+    print(f'{daemon.name} done.')
 
 def panorama_main(daemon, process_args):
 
     args, delay_sec = process_args
 
-    print(f"{daemon.name} starting...")
+    print(f'{daemon.name} starting...')
 
     colors = {}
 
@@ -564,13 +564,13 @@ def panorama_main(daemon, process_args):
 
         time.sleep(delay_sec)
 
-    print(f"{daemon.name} done.")
+    print(f'{daemon.name} done.')
 
 def camera_main(daemon, process_args):
 
     args, delay_sec = process_args
 
-    print(f"{daemon.name} starting...")
+    print(f'{daemon.name} starting...')
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -602,7 +602,7 @@ def camera_main(daemon, process_args):
 
                     if args.show_pin :
                         cv2.putText(cameraDatum.frame, 
-                            f"Pin{pin_id}", 
+                            f'Pin{pin_id}', 
                             origin, 
                             font, 
                             fontScale,
@@ -623,7 +623,7 @@ def camera_main(daemon, process_args):
 
         time.sleep(delay_sec)
 
-    print(f"{daemon.name} done.")
+    print(f'{daemon.name} done.')
 
 class DaemonBase :
     def reset(self) :
@@ -663,14 +663,14 @@ class Script :
         parser.add_argument('--world_space_path', type=str, default='', help='set the world space capture source folder/data export folder')
         parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
         parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
-        parser.add_argument('--show_pin', action="store_true", help='show pin on each camera feed')
-        parser.add_argument('--stream', action="store_true", help='stream content')
+        parser.add_argument('--show_pin', action='store_true', help='show pin on each camera feed')
+        parser.add_argument('--stream', action='store_true', help='stream content')
         parser.add_argument('--udp_address', type=str, default='127.0.0.1', help='udp address')
         parser.add_argument('--udp_port', type=int, default=5000, help='udp port')
         parser.add_argument('--udp_packet_size', type=int, default=1316, help='udp packet size')
         parser.add_argument('--alpha', type=float, default=0.0, help='the vertical angle in polar coordinates will be mapped to [alpha, pi - alpha]')
         parser.add_argument('--video_path', type=str, default='', help='if valid file, the stream will be encoded and saved into a video file')
-        parser.add_argument('--benchmark', action='store_true', help="Enable benchmarking mode (no actual camera capture, using video dummy data instead)")
+        parser.add_argument('--benchmark', action='store_true', help='Enable benchmarking mode (no actual camera capture, using video dummy data instead)')
         parser.add_argument('--height', dest='H', type=int, default=1080, help='height of the output image')
         parser.add_argument('--width', dest='W', type=int, default=1920, help='width of the output image')
         parser.add_argument('--multiprocessing_start', type=str, default='spawn', help='multiprocessing start method')
@@ -716,7 +716,7 @@ class Script :
             os.mkdir(Script.args.path)
 
         if not os.path.exists(Script.args.path) :
-            print("Invalid path " + Script.args.path)
+            print(f'Invalid path "{Script.args.path}"')
             sys.exit(1)
 
         pair_list = CalibrationUtilities.MakePairs(Script.args.pairs, pin_ids)        
@@ -733,7 +733,7 @@ class Script :
         if not pair_list :
             return
 
-        print("Creating capture objects...")
+        print('Creating capture objects...')
 
         if Script.args.benchmark :
             for k in range(len(pin_ids)) :
