@@ -473,14 +473,11 @@ class VulkanCompute :
         print('Debug Report: {} {}'.format(args[5], args[6]))
         return 0
     
-    def Setup(self, shader_file, num_cameras, height, width, channels, workgroup_size, enable_validation_layers):
+    def Setup(self, color_array, pixel_array, condition_array, accumulation_normalization, panorama, shader_file,workgroup_size, enable_validation_layers):
 
         self.shader_file = shader_file
 
-        self.num_cameras = num_cameras
-        self.height = height
-        self.width = width
-        self.channels = channels
+        self.num_cameras, self.height, self.width, self.channels = color_array.shape
         self.workgroup_size = workgroup_size
 
         self.enable_validation_layers = enable_validation_layers
@@ -599,33 +596,6 @@ class VulkanCompute :
         self.device = vkCreateDevice(self.physical_device, device_info, None)
         self.queue = vkGetDeviceQueue(self.device, queue_family_index, 0)
 
-        # pass the images from numpy to the shader here
-        color_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
-        condition_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
-        pixel_array = np.zeros((self.num_cameras, self.height, self.width, self.channels), dtype=np.float32)
-
-        accumulation_normalization = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
-        accumulation_normalization[:,:,0] = 1.0
-
-        panorama = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
-
-        for n in range(self.num_cameras):
-            # for c in range(self.channels):
-            for x in range(self.width):
-                r = x / (self.width-1.0)        
-                for y in range(self.height):
-                    g = y / (self.height-1.0)        
-                    
-                    color_array[n,y,x,0] = r
-                    color_array[n,y,x,1] = g
-                    color_array[n,y,x,2] = n / (self.num_cameras-1.0)
-
-            color_array[n,:,:,3] = 1.0
-
-            VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
-
-        #we might need to convert them to C,H,W
-
         pixel = array.array('f', [0, 0, 0, 0]) # vec4
         address, num_bytes = pixel.buffer_info()
 
@@ -703,7 +673,35 @@ if __name__ == '__main__':
     workgroup_size = 16
 
     shader_file = 'lerp.spv'
-    compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size, enable_validation_layers=True)
+
+    # pass the images from numpy to the shader here
+    color_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
+    condition_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
+    pixel_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
+
+    accumulation_normalization = np.zeros((height, width, channels), dtype=np.float32)
+    accumulation_normalization[:,:,0] = 1.0
+
+    panorama = np.zeros((height, width, channels), dtype=np.float32)
+
+    for n in range(num_cameras):
+        # for c in range(channels):
+        for x in range(width):
+            r = x / (width-1.0)        
+            for y in range(height):
+                g = y / (height-1.0)        
+                
+                color_array[n,y,x,0] = r
+                color_array[n,y,x,1] = g
+                color_array[n,y,x,2] = n / (num_cameras-1.0)
+
+        color_array[n,:,:,3] = 1.0
+
+        VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
+
+    #we might need to convert them to C,H,W
+
+    compute.Setup(color_array, pixel_array, condition_array, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
 
     print('Vulkan compute pipeline created successfully.')
 
