@@ -379,7 +379,12 @@ class VulkanCompute :
 
         vkDestroyFence(self.device, fence, None)
 
-    def GetBufferAsNumpy(self, buffer_memory, buffer_size, H, W, C):
+    def GetBufferAsNumpy(self, binding_id):
+
+        binding, buffer, buffer_memory, buffer_size = self.buffer_info[binding_id]
+
+        assert binding == binding_id, f"Expected binding {binding_id} but got {binding}"
+
         # Map the buffer memory, so that we can read from it on the CPU.
         p_mapped_memory = vkMapMemory(self.device, buffer_memory, 0, buffer_size, 0)
 
@@ -391,7 +396,7 @@ class VulkanCompute :
         # Done reading, so unmap.
         vkUnmapMemory(self.device, buffer_memory)
 
-        pa = pa.reshape((H, W, C))
+        pa = pa.reshape((self.height, self.width, self.channels))
 
         return pa
 
@@ -455,14 +460,8 @@ class VulkanCompute :
 
         self.RunCommandBuffer()
 
-        binding_id = 4
-
-        binding, panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[binding_id]
-
-        assert binding == binding_id, f"Expected binding {binding_id} but got {binding}"
-        
         # get the results into a numpy array here
-        output_image = self.GetBufferAsNumpy(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
+        output_image = self.GetBufferAsNumpy(binding_id=4)
 
         # Now we save the acquired color data to a .png.
         VulkanCompute.SaveImage(output_image, 'test.png')
