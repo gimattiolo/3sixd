@@ -642,8 +642,11 @@ if __name__ == "__main__":
     shader_file = "lerp.spv"
     compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size)
 
+    print("Vulkan compute pipeline created successfully.")
+
     compute.Run()
+
+    print("Vulkan compute pipeline run successfully.")
 
     compute.Cleanup()
 
-    print("Vulkan compute pipeline created successfully.")
