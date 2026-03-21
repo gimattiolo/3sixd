@@ -22,10 +22,11 @@ import ffmpeg
 
 import Utilities
 import CalibrationUtilities
+from VulkanCompute import VulkanCompute 
 
 two_pi = 2 * math.pi
 
-USE_CUDA = True
+USE_CUDA = False
 
 class CameraDatum :
 
@@ -35,7 +36,7 @@ class CameraDatum :
         self.identifier = ''
         self.file = ''
         self.capture = None
-        self.frame = None
+        self.frame = None # always normalized to [0,1]
         self.IntrinsicMatrix = None
         self.Distortion = None
         self.ReprojectionError = None
@@ -533,7 +534,6 @@ def panorama_main(daemon, process_args):
         panorama_cuda = cp.array(panorama)
 
     else :
-        from VulkanCompute import VulkanCompute 
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
@@ -576,7 +576,7 @@ def panorama_main(daemon, process_args):
 
             panorama_cuda *= accumulation_normalization_cuda
 
-            panorama_numpy = cp.asnumpy(panorama_cuda).astype(np.uint8)
+            panorama_numpy = cp.asnumpy(panorama_cuda)
 
         else :
 
@@ -585,10 +585,12 @@ def panorama_main(daemon, process_args):
             # get the results into a numpy array here
             panorama_numpy = compute.GetBufferAsNumpy(binding_id=4)
 
+            #VulkanCompute.SaveImage(panorama_numpy, 'test.png')
+
         ### shader ends ###
         pan_duration_s = time.time() - start_time
 
-        panorama_numpy = panorama_numpy[:,:,0:3]
+        panorama_numpy = (panorama_numpy[:,:,0:3]*255).astype(np.uint8)
 
         args.panoramas.put(panorama_numpy, block=False)
         args.bytes.put(panorama_numpy.tobytes(), block=False)
@@ -628,7 +630,7 @@ def camera_main(daemon, process_args):
                 if cameraDatum.capture.isOpened() :
                     # Capture frame-by-frame
                     ret, cameraDatum.frame = cameraDatum.capture.read()
-
+                    cameraDatum.frame /= 255.0
                     if not ret :
                         print(f'{pin_id} not reading frames')
                         cameraDatum.frame = args.empty_frame.copy()
@@ -743,9 +745,9 @@ class Script :
 
         size_default = (Script.args.H,Script.args.W) 
 
+        # empty frame is red
         Script.args.empty_frame = np.zeros((Script.args.H, Script.args.W, 3), dtype=np.float32)
-
-        Script.args.empty_frame[:, :, 2] = 255.0 
+        Script.args.empty_frame[:, :, 2] = 1.0 
 
         if not os.path.exists(Script.args.path) :
             os.mkdir(Script.args.path)
@@ -1110,6 +1112,9 @@ class Script :
         #in msec
         waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
 
+        panorama = Script.args.empty_frame.copy()
+        panorama = (panorama*255).astype(np.uint8)
+
         while running :
 
             key = cv2.waitKey(waitKeyPeriod_msec)
@@ -1132,13 +1137,11 @@ class Script :
             #start_time = time.time()
             # save screenshot
 
-            panorama =  None
-            
             try :
                 #print(f'queue_size={Script.args.panoramas.qsize()}')
                 panorama = Script.args.panoramas.get(block=False)
             except Exception as e :
-                continue
+                pass
 
             if key == ord('s') :
                 filename = os.path.join(Script.args.path, f'panorama_{output_id}.png')
