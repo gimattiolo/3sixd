@@ -455,8 +455,12 @@ class VulkanCompute :
 
         self.RunCommandBuffer()
 
-        binding, panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[0]
+        binding_id = 4
 
+        binding, panorama_buffer, panorama_buffer_memory, buffer_size = self.buffer_info[binding_id]
+
+        assert binding == binding_id, f"Expected binding {binding_id} but got {binding}"
+        
         # get the results into a numpy array here
         output_image = self.GetBufferAsNumpy(panorama_buffer_memory, buffer_size, self.height, self.width, self.channels)
 
@@ -546,7 +550,7 @@ class VulkanCompute :
         accumulation_normalization = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
         accumulation_normalization[:,:,0] = 1.0
 
-        panorama_image = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
+        panorama = np.zeros((self.height, self.width, self.channels), dtype=np.float32)
 
         for n in range(self.num_cameras):
             # for c in range(self.channels):
@@ -571,16 +575,17 @@ class VulkanCompute :
         buffer_size = self.width * self.height * self.channels * num_bytes  
         buffer_array_size = self.num_cameras * self.width * self.height * self.channels * num_bytes
 
-        panorama_buffer, panorama_buffer_memory = self.CreateBuffer(buffer_size, pAllocator=None, pBuffer=None)
         accumulation_normalization_buffer, accumulation_normalization_buffer_memory = self.CreateBuffer(buffer_size, pAllocator=None, pBuffer=None)
         color_array_buffer, color_array_buffer_memory = self.CreateBuffer(buffer_array_size, pAllocator=None, pBuffer=None)
         condition_array_buffer, condition_array_buffer_memory = self.CreateBuffer(buffer_array_size, pAllocator=None, pBuffer=None)
         pixel_array_buffer, pixel_array_buffer_memory = self.CreateBuffer(buffer_array_size, pAllocator=None, pBuffer=None)
+        panorama_buffer, panorama_buffer_memory = self.CreateBuffer(buffer_size, pAllocator=None, pBuffer=None)
 
         self.InitializeBuffer(accumulation_normalization, accumulation_normalization_buffer_memory, buffer_size)
         self.InitializeBuffer(color_array, color_array_buffer_memory, buffer_array_size)
         self.InitializeBuffer(condition_array, condition_array_buffer_memory, buffer_array_size)
         self.InitializeBuffer(pixel_array, pixel_array_buffer_memory, buffer_array_size)
+        self.InitializeBuffer(panorama, panorama_buffer_memory, buffer_size)
 
         # Here we specify a descriptor set layout. This allows us to bind our descriptors to
         # resources in the shader.
@@ -591,11 +596,12 @@ class VulkanCompute :
         # in the compute shader.
 
         self.buffer_info = [
-            (0, panorama_buffer, panorama_buffer_memory, buffer_size),
-            (1, accumulation_normalization_buffer, accumulation_normalization_buffer_memory, buffer_size),
-            (2, color_array_buffer, color_array_buffer_memory, buffer_array_size),
-            (3, condition_array_buffer, condition_array_buffer_memory, buffer_array_size),
-            (4, pixel_array_buffer, pixel_array_buffer_memory, buffer_array_size)]
+            (0, accumulation_normalization_buffer, accumulation_normalization_buffer_memory, buffer_size),
+            (1, color_array_buffer, color_array_buffer_memory, buffer_array_size),
+            (2, condition_array_buffer, condition_array_buffer_memory, buffer_array_size),
+            (3, pixel_array_buffer, pixel_array_buffer_memory, buffer_array_size),
+            (4, panorama_buffer, panorama_buffer_memory, buffer_size),
+        ]
 
         self.descriptor_set_layout_bindings = [None] * len(self.buffer_info)
 

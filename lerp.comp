@@ -13,29 +13,29 @@ struct Pixel{
   vec4 value;
 };
 
-layout(std140, binding = 0) buffer PanoramaSBOOut
-{
-   Pixel panorama_buffer[];
-};
-
-layout(std140, binding = 1) readonly buffer AccumulationSSBOIn 
+layout(std140, binding = 0) readonly buffer AccumulationSSBOIn 
 {
    Pixel  accumulation_normalization_buffer[];
 };
 
-layout(std140, binding = 2) readonly buffer ColorArraySSBOIn 
+layout(std140, binding = 1) readonly buffer ColorArraySSBOIn 
 {
    Pixel  color_array_buffer[];
 };
 
-layout(std140, binding = 3) readonly buffer ConditionArraySSBOIn 
+layout(std140, binding = 2) readonly buffer ConditionArraySSBOIn 
 {
    Pixel  condition_array_buffer[];
 };
 
-layout(std140, binding = 4) readonly buffer PixelArraySSBOIn 
+layout(std140, binding = 3) readonly buffer PixelArraySSBOIn 
 {
    Pixel  pixel_array_buffer[];
+};
+
+layout(std140, binding = 4) buffer PanoramaSBOOut
+{
+   Pixel panorama_buffer[];
 };
 
 void main() 
