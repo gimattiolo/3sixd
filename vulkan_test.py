@@ -1,8 +1,8 @@
 import numpy as np
-import VulkanCompute
+from VulkanCompute import VulkanCompute
 
 if __name__ == '__main__':
-    compute = VulkanCompute.VulkanCompute()
+    compute = VulkanCompute()
 
     # Define parameters for the compute shader
     # need to match the parameters in the shader code
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     # pass the images from numpy to the shader here
     color_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
     condition_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
-    pixel_array = np.zeros((num_cameras, height, width, channels), dtype=np.int32)
+    pixel_array = np.zeros((num_cameras, height, width, channels), dtype=np.float32)
 
     accumulation_normalization = np.zeros((height, width, channels), dtype=np.float32)
     accumulation_normalization[:,:,0] = 1.0
@@ -35,9 +35,9 @@ if __name__ == '__main__':
                 color_array[n,y,x,1] = g
                 color_array[n,y,x,2] = n / (num_cameras-1.0)
 
-        color_array[n,:,:,3] = 1.0
+        # color_array[n,:,:,3] = 1.0
 
-        VulkanCompute.VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
+        VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
 
     #we might need to convert them to C,H,W
 
@@ -45,6 +45,12 @@ if __name__ == '__main__':
 
     print('Vulkan compute pipeline created successfully.')
 
-    compute.Run()
+    compute.RunCommandBuffer()
+
+    # get the results into a numpy array here
+    output_image = compute.GetBufferAsNumpy(binding_id=4)
+
+    # Now we save the acquired color data to a .png.
+    VulkanCompute.SaveImage(output_image, 'test.png')
 
     print('Vulkan compute pipeline run successfully.')

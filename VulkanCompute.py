@@ -275,7 +275,7 @@ class VulkanCompute :
         begin_info = VkCommandBufferBeginInfo(
             sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             # the buffer is only submitted and used once in this application.
-            flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            flags=0#VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
         )
         vkBeginCommandBuffer(self.command_buffer, begin_info)
 
@@ -443,6 +443,7 @@ class VulkanCompute :
 
         ffi_buffer = vkMapMemory(self.device, buffer_memory, offset=0, size=buffer_size, flags=0)
         src_bytes = numpy_array.tobytes()
+        assert len(src_bytes) <= buffer_size, f'Buffer size {buffer_size} is too small for data of size {len(src_bytes)}'
         ffi_buffer[:len(src_bytes)] = src_bytes
         vkUnmapMemory(self.device, buffer_memory)
 
@@ -455,19 +456,6 @@ class VulkanCompute :
         if os.path.exists(file_path):
             os.remove(file_path)
         image.save(file_path)
-
-    def Run(self) :
-
-        # Finally, run the recorded command buffer.
-
-        self.RunCommandBuffer()
-
-        # get the results into a numpy array here
-        output_image = self.GetBufferAsNumpy(binding_id=4)
-
-        # Now we save the acquired color data to a .png.
-        VulkanCompute.SaveImage(output_image, 'test.png')
-
 
     def DebugReportCallbackFn(*args):
         print('Debug Report: {} {}'.format(args[5], args[6]))
@@ -596,8 +584,9 @@ class VulkanCompute :
         self.device = vkCreateDevice(self.physical_device, device_info, None)
         self.queue = vkGetDeviceQueue(self.device, queue_family_index, 0)
 
-        pixel = array.array('f', [0, 0, 0, 0]) # vec4
-        address, num_bytes = pixel.buffer_info()
+        # pixel = array.array('f', [0, 0, 0]) # vec
+        # address, num_bytes = pixel.buffer_info()
+        num_bytes = 4 # size of float32 in bytes
 
         buffer_size = self.width * self.height * self.channels * num_bytes  
         buffer_array_size = self.num_cameras * self.width * self.height * self.channels * num_bytes

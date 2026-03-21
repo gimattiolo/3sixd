@@ -1,7 +1,7 @@
 #version 450
 
 // thee parameters need to match the value in teh setup code
-#define num_cameras = 6;
+#define num_cameras 6
 #define height 1080
 #define width 1920
 #define channels 4
@@ -12,6 +12,10 @@ layout (local_size_x = workgroup_size, local_size_y = workgroup_size, local_size
 struct Pixel{
   vec4 value;
 };
+
+//struct Coordinate{
+//  ivec2 value;
+//};
 
 layout(std140, binding = 0) readonly buffer AccumulationSSBOIn 
 {
