@@ -25,6 +25,8 @@ import CalibrationUtilities
 
 two_pi = 2 * math.pi
 
+USE_CUDA = False
+
 class CameraDatum :
 
     def reset(self) :
@@ -503,58 +505,92 @@ def panorama_main(daemon, process_args):
 
     print(f'{daemon.name} starting...')
 
-    colors = cp.zeros((len(args.cameraData), args.H, args.W, 3), dtype=np.float32)
+    colors = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
 
+    pixel_coords = np.zeros((len(args.cameraData), args.H, args.W, 2), dtype=np.int32)
+    conditions = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
+
     for pin_id in args.cameraData :
 
-        args.pixel_coords[pin_id] = cp.array(args.pixel_coords[pin_id])
-        args.conditions[pin_id] = cp.array(args.conditions[pin_id])
+        pixel_coords[pin_id,:,:,0:3] = np.array(args.pixel_coords[pin_id])
+        conditions[pin_id,:,:,0:3] = np.array(args.conditions[pin_id])
 
-    accumulation_normalization = cp.array(args.accumulation_normalization)
+    accumulation_normalization = np.array(args.accumulation_normalization)
+
+    # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
+    # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
+
+    panorama = np.zeros((args.H, args.W, 4), np.float32)
+
+    if USE_CUDA :
+
+        colors = cp.array(colors)
+        pixel_coords = cp.array(pixel_coords)
+        conditions = cp.array(conditions)
+        accumulation_normalization = cp.array(accumulation_normalization)
+        panorama = cp.array(panorama)
+
+    else :
+        from VulkanCompute import VulkanCompute 
+        compute = VulkanCompute()
+        workgroup_size = 32
+        shader_file = 'lerp.spv'
+        compute.Setup(colors, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
 
     while daemon.running :
 
         start_time = time.time()
 
-        args.cameraLockObject.acquire() 
-        for pin_id in args.cameraData :
-            colors[pin_id,:,:,:] = cp.array(args.cameraData[pin_id].frame)
-        args.cameraLockObject.release() 
+        if USE_CUDA :        
 
-        #print(f'Cam:{time.time() - start_time} s')
+            args.cameraLockObject.acquire() 
+            for pin_id in args.cameraData :
+                colors[pin_id,:,:,0:3] = cp.array(args.cameraData[pin_id].frame)
+            args.cameraLockObject.release() 
 
-        start_time = time.time()
+            #print(f'Cam:{time.time() - start_time} s')
 
-        ### shader begins ###
+            start_time = time.time()
 
-        # make panorama
-        panorama = cp.zeros((args.H, args.W, 3), np.float32)
-        for pin_id in args.cameraData :
+            ### shader begins ###
 
-            pixel = args.pixel_coords[pin_id]
-            color = colors[pin_id][pixel[:, :, 0], pixel[:, :, 1], :]
+            # make panorama
+            panorama[:] = 0.0 
+            for pin_id in args.cameraData :
 
-            ### debug ###
+                pixel = pixel_coords[pin_id,:,:,:]
+                color = colors[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
 
-            #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
-            
-            #color.fill(0.0)
-            #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
-            #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
+                ### debug ###
 
-            #############
+                #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
+                
+                #color.fill(0.0)
+                #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
+                #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
 
-            Lerp_vectorized(args.conditions[pin_id], 0.0, color, panorama)
-            #Lerp_vectorized(zeros, zeros, color, panorama)
+                #############
 
-        panorama *= accumulation_normalization
+                Lerp_vectorized(conditions[pin_id,:,:,:], 0.0, color, panorama)
+                #Lerp_vectorized(zeros, zeros, color, panorama)
 
-        panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
+            panorama *= accumulation_normalization
+
+            panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
+
+        else :
+
+            compute.RunCommandBuffer()
+
+            # get the results into a numpy array here
+            panorama_numpy = compute.GetBufferAsNumpy(binding_id=4)
 
         ### shader ends ###
+
+        panorama_numpy = panorama_numpy[:,:,0:3]
 
         args.panoramas.put(panorama_numpy, block=False)
         args.bytes.put(panorama_numpy.tobytes(), block=False)
@@ -963,7 +999,7 @@ class Script :
         Script.args.pixel_coords= {}
         Script.args.conditions = {}
 
-        num_acculations = np.zeros((Script.args.H,Script.args.W), dtype=np.float32)
+        num_accumulations = np.zeros((Script.args.H,Script.args.W), dtype=np.float32)
 
         for pin_id, cameraDatum in Script.args.cameraData.items() :
 
@@ -1012,11 +1048,11 @@ class Script :
             mask_y = (0 <= pixel_y) & (pixel_y < Script.args.H)
             condition = mask_x & mask_y
 
-            num_acculations += condition
+            num_accumulations += condition
 
             # Combine into a single array of pixel coordinates
             # y is row, x is column
-            pixel = np.stack((pixel_y, pixel_x), axis=2)
+            pixel = np.stack((pixel_y, pixel_x), axis=2).astype(np.int32)
 
             condition_int = condition.astype(np.int32)
 
@@ -1029,11 +1065,11 @@ class Script :
             
             Script.args.pixel_coords[pin_id] = pixel
 
-        #print(f'{num_acculations.min()}|{num_acculations.max()}')
+        #print(f'{num_accumulations.min()}|{num_accumulations.max()}')
 
-        Script.args.accumulation_normalization = 1.0 / np.maximum(1.0, num_acculations)
+        Script.args.accumulation_normalization = 1.0 / np.maximum(1.0, num_accumulations)
         # replicate along rgb
-        Script.args.accumulation_normalization = np.tile(Script.args.accumulation_normalization[:, :, np.newaxis], (1, 1, 3)).astype(np.float32)
+        Script.args.accumulation_normalization = np.tile(Script.args.accumulation_normalization[:, :, np.newaxis], (1, 1, 4)).astype(np.float32)
 
         ray_inW = np.reshape(ray_inW, (3, Script.args.H, Script.args.W))
         ray_inW = np.transpose(ray_inW, (1, 2, 0))

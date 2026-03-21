@@ -5,7 +5,7 @@
 #define height 1080
 #define width 1920
 #define channels 4
-#define workgroup_size 16
+#define workgroup_size 32
 
 layout (local_size_x = workgroup_size, local_size_y = workgroup_size, local_size_z = 1 ) in;
 

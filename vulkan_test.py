@@ -10,7 +10,7 @@ if __name__ == '__main__':
     height = 1080
     width = 1920
     channels = 4
-    workgroup_size = 16
+    workgroup_size = 32
 
     shader_file = 'lerp.spv'
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
                 color_array[n,y,x,1] = g
                 color_array[n,y,x,2] = n / (num_cameras-1.0)
 
-        # color_array[n,:,:,3] = 1.0
+        color_array[n,:,:,3] = 1.0
 
         VulkanCompute.SaveImage(color_array[n,:,:,:], f'color_{n}.png')
 
