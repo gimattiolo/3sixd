@@ -11,7 +11,7 @@ import subprocess
 
 import multiprocessing
 
-# os.environ["LD_PRELOAD"] = "/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0"
+# os.environ['LD_PRELOAD'] = '/home/gimattiolo/gits/3sixd/.venv/lib/python3.8/site-packages/torch.libs/libgomp-d22c30c5.so.1.0.0'
 
 #import torch
 
@@ -70,7 +70,7 @@ def ScanCameras(pin_data) :
 
     else :
 
-        subprocess_out = subprocess.check_output(["v4l2-ctl", "--list-devices"]) 
+        subprocess_out = subprocess.check_output(['v4l2-ctl', '--list-devices']) 
         subprocess_out_str = str(subprocess_out)
 
         print(subprocess_out_str)
@@ -395,7 +395,7 @@ def GetPinsData(pairs_list, flip_methods_list) :
 
 def encoding_main(daemon, process_args):
     args, delay_sec = process_args
-    print(f"{daemon.name} starting...")
+    print(f'{daemon.name} starting...')
 
     # UDP destination address and port
     url=f'udp://{args.udp_address}:{args.udp_port}?pkt_size={args.udp_packet_size}'
@@ -951,7 +951,7 @@ class Script :
             E_w_ci_4x4 = np.dot(Ms_c0_ci[pin_id], M_w_c0)
             ProjectionMatrices[pin_id] = np.dot(cameraDatum.IntrinsicMatrix, E_w_ci_4x4[0:3, :])
 
-        print("Running...")
+        print('Running...')
 
         window_visible = True
 
@@ -1086,7 +1086,7 @@ class Script :
                 running = False
                 break
 
-            # if cv2.getWindowProperty("foo", cv2.WND_PROP_VISIBLE):
+            # if cv2.getWindowProperty('foo', cv2.WND_PROP_VISIBLE):
             #     window_visible = True
             # else :
             #     window_visible = False
@@ -1141,5 +1141,5 @@ class Script :
 
         cv2.destroyAllWindows()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     Script.main()

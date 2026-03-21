@@ -42,7 +42,7 @@ class VulkanCompute :
 
     # Load SPIR-V shader binary
     def load_shader(filename):
-        with open(filename, "rb") as f:
+        with open(filename, 'rb') as f:
             code = f.read()
         return code
 
@@ -139,7 +139,7 @@ class VulkanCompute :
         #                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
 
 
-        #assert index != -1, "Failed to find suitable memory type for image"
+        #assert index != -1, 'Failed to find suitable memory type for image'
         
         # Now use obtained memory requirements info to allocate the memory for the image.
         allocate_info = VkMemoryAllocateInfo(
@@ -242,7 +242,7 @@ class VulkanCompute :
         if len(pipelines) == 1:
             self.pipeline = pipelines[0]
         else:
-            raise Exception("Could not create compute pipeline")
+            raise Exception('Could not create compute pipeline')
 
     def CreateCommandBuffer(self, queue_family_index):
         # We are getting closer to the end. In order to send commands to the device(GPU),
@@ -385,7 +385,7 @@ class VulkanCompute :
 
         binding, buffer, buffer_memory, buffer_size = self.buffer_info[binding_id]
 
-        assert binding == binding_id, f"Expected binding {binding_id} but got {binding}"
+        assert binding == binding_id, f'Expected binding {binding_id} but got {binding}'
 
         # Map the buffer memory, so that we can read from it on the CPU.
         p_mapped_memory = vkMapMemory(self.device, buffer_memory, 0, buffer_size, 0)
@@ -409,7 +409,7 @@ class VulkanCompute :
             # destroy callback.
             func = vkGetInstanceProcAddr(self.instance, 'vkDestroyDebugReportCallbackEXT')
             if func == ffi.NULL:
-                raise Exception("Could not load vkDestroyDebugReportCallbackEXT")
+                raise Exception('Could not load vkDestroyDebugReportCallbackEXT')
             if self.debug_report_callback:
                 func(self.instance, self.debug_report_callback, None)
 
@@ -494,7 +494,7 @@ class VulkanCompute :
             # We get all supported layers with vkEnumerateInstanceLayerProperties.
             layer_properties = vkEnumerateInstanceLayerProperties()
 
-            VALIDATION_LAYER_NAME = "VK_LAYER_KHRONOS_validation"
+            VALIDATION_LAYER_NAME = 'VK_LAYER_KHRONOS_validation'
 
             # And then we simply check if VK_LAYER_KHRONOS_validation is among the supported layers.
             supported_layer_names = [prop.layerName for prop in layer_properties]
@@ -516,9 +516,9 @@ class VulkanCompute :
         # Create Vulkan instance
         self.app_info = VkApplicationInfo(
             sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            pApplicationName="MinimalCompute".encode(),
+            pApplicationName='MinimalCompute'.encode(),
             applicationVersion=VK_MAKE_VERSION(1, 0, 0),
-            pEngineName="NoEngine".encode(),
+            pEngineName='NoEngine'.encode(),
             engineVersion=VK_MAKE_VERSION(1, 0, 0),
             apiVersion=VK_API_VERSION_1_0
         )
@@ -537,7 +537,7 @@ class VulkanCompute :
         try:
             self.instance = vkCreateInstance(instance_info, None)
         except VkErrorInitializationFailed:
-            print("Failed to create Vulkan instance")
+            print('Failed to create Vulkan instance')
             sys.exit(1)
 
         if self.enable_validation_layers:
@@ -558,13 +558,13 @@ class VulkanCompute :
         # Enumerate physical devices (GPUs)
         devices = vkEnumeratePhysicalDevices(self.instance)
         if not devices:
-            print("No Vulkan-compatible GPU found.")
+            print('No Vulkan-compatible GPU found.')
         else:
-            print(f"Found {len(devices)} Vulkan device(s):")
+            print(f'Found {len(devices)} Vulkan device(s):')
             for device in devices:
                 props = vkGetPhysicalDeviceProperties(device)
-                # print(f" - {props.deviceName.decode('utf-8')}")
-                print(f"{props.deviceName}")
+                # print(f' - {props.deviceName.decode('utf-8')}')
+                print(f'{props.deviceName}')
 
         # Pick first physical device
         physical_devices = vkEnumeratePhysicalDevices(self.instance)
@@ -578,7 +578,7 @@ class VulkanCompute :
                 break
 
         if queue_family_index is None:
-            print("No compute queue found")
+            print('No compute queue found')
             sys.exit(1)
 
         # Create logical device and queue
@@ -691,7 +691,7 @@ class VulkanCompute :
         self.CreateCommandBuffer(queue_family_index)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     compute = VulkanCompute()
 
     # Define parameters for the compute shader
@@ -702,11 +702,11 @@ if __name__ == "__main__":
     channels = 4
     workgroup_size = 16
 
-    shader_file = "lerp.spv"
+    shader_file = 'lerp.spv'
     compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size, enable_validation_layers=True)
 
-    print("Vulkan compute pipeline created successfully.")
+    print('Vulkan compute pipeline created successfully.')
 
     compute.Run()
 
-    print("Vulkan compute pipeline run successfully.")
+    print('Vulkan compute pipeline run successfully.')
