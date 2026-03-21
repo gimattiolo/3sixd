@@ -10,12 +10,12 @@
 layout (local_size_x = workgroup_size, local_size_y = workgroup_size, local_size_z = 1 ) in;
 
 struct Pixel{
-  vec4 value;
+  vec4 value; // it's padded to vec4. no point at using vec3
 };
 
-//struct Coordinate{
-//  ivec2 value;
-//};
+struct Coordinate{
+  ivec2 value;
+};
 
 layout(std140, binding = 0) readonly buffer AccumulationSSBOIn 
 {
@@ -62,8 +62,8 @@ void main()
 
    vec4 panorama = vec4(0.0, 0.0, 0.0, 1.0);
 
-   int pin_id=3;
-   //for(int pin_id=0; pin_id < num_cameras; ++pin_id)
+   //int pin_id=3;
+   for(int pin_id=0; pin_id < num_cameras; ++pin_id)
    {
       int pixel_index3 = width * height * pin_id + width * pixel_coord2.y + pixel_coord2.x;
 
@@ -72,16 +72,16 @@ void main()
 
       ivec2 color_coord2 = ivec2(pixel_value.x, pixel_value.y);
 
-      //int color_index3 = width * height * pin_id + width * color_coord2.y + color_coord2.x;
-      int color_index3 = width * height * pin_id + output_index2;
+      int color_index3 = width * height * pin_id + width * color_coord2.y + color_coord2.x;
+      //int color_index3 = width * height * pin_id + output_index2;
       
       vec4 color = color_array_buffer[color_index3].value;
-      //panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
-      panorama.rgb = color.rgb; 
+      panorama += mix(zero4, color, condition); //panorama += mix(zero4, color, zero4);
+      //panorama.rgb = color.rgb; 
       //panorama += mix(zero4, color, zero4);
       
    }
 
-   //panorama.xyz *= accumulation_normalization.xyz;
+   panorama.xyz *= accumulation_normalization.xyz;
    panorama_buffer[output_index2].value = panorama;
 }

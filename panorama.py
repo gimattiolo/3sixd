@@ -25,7 +25,7 @@ import CalibrationUtilities
 
 two_pi = 2 * math.pi
 
-USE_CUDA = False
+USE_CUDA = True
 
 class CameraDatum :
 
@@ -505,7 +505,7 @@ def panorama_main(daemon, process_args):
 
     print(f'{daemon.name} starting...')
 
-    colors = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
+    colors_numpy = np.zeros((len(args.cameraData), args.H, args.W, 4), dtype=np.float32)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
@@ -527,42 +527,39 @@ def panorama_main(daemon, process_args):
 
     if USE_CUDA :
 
-        colors = cp.array(colors)
-        pixel_coords = cp.array(pixel_coords)
-        conditions = cp.array(conditions)
-        accumulation_normalization = cp.array(accumulation_normalization)
-        panorama = cp.array(panorama)
+        pixel_coords_cuda = cp.array(pixel_coords)
+        conditions_cuda = cp.array(conditions)
+        accumulation_normalization_cuda = cp.array(accumulation_normalization)
+        panorama_cuda = cp.array(panorama)
 
     else :
         from VulkanCompute import VulkanCompute 
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
-        compute.Setup(colors, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
+        compute.Setup(colors_numpy, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
 
     while daemon.running :
+
+        args.cameraLockObject.acquire() 
+        for pin_id in args.cameraData :
+            colors_numpy[pin_id,:,:,0:3] = args.cameraData[pin_id].frame
+        args.cameraLockObject.release() 
 
         start_time = time.time()
 
         if USE_CUDA :        
 
-            args.cameraLockObject.acquire() 
-            for pin_id in args.cameraData :
-                colors[pin_id,:,:,0:3] = cp.array(args.cameraData[pin_id].frame)
-            args.cameraLockObject.release() 
-
-            #print(f'Cam:{time.time() - start_time} s')
-
-            start_time = time.time()
+            colors_cuda = cp.array(colors_numpy)
 
             ### shader begins ###
 
             # make panorama
-            panorama[:] = 0.0 
+            panorama_cuda[:] = 0.0 
             for pin_id in args.cameraData :
 
-                pixel = pixel_coords[pin_id,:,:,:]
-                color = colors[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
+                pixel = pixel_coords_cuda[pin_id,:,:,:]
+                color = colors_cuda[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
 
                 ### debug ###
 
@@ -574,12 +571,12 @@ def panorama_main(daemon, process_args):
 
                 #############
 
-                Lerp_vectorized(conditions[pin_id,:,:,:], 0.0, color, panorama)
+                Lerp_vectorized(conditions_cuda[pin_id,:,:,:], 0.0, color, panorama_cuda)
                 #Lerp_vectorized(zeros, zeros, color, panorama)
 
-            panorama *= accumulation_normalization
+            panorama_cuda *= accumulation_normalization_cuda
 
-            panorama_numpy = cp.asnumpy(panorama).astype(np.uint8)
+            panorama_numpy = cp.asnumpy(panorama_cuda).astype(np.uint8)
 
         else :
 
@@ -589,13 +586,13 @@ def panorama_main(daemon, process_args):
             panorama_numpy = compute.GetBufferAsNumpy(binding_id=4)
 
         ### shader ends ###
+        pan_duration_s = time.time() - start_time
 
         panorama_numpy = panorama_numpy[:,:,0:3]
 
         args.panoramas.put(panorama_numpy, block=False)
         args.bytes.put(panorama_numpy.tobytes(), block=False)
 
-        pan_duration_s = time.time() - start_time
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
         time.sleep(delay_sec)
@@ -735,6 +732,8 @@ class Script :
         assert num_cameras >= 0
 
         pin_ids = list(Script.args.cameraData.keys())
+
+        print(f'Using CUDA:{USE_CUDA}')
 
         print(f'Using cameras:{Script.args.cameraData}')
 
