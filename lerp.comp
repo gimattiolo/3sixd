@@ -82,6 +82,7 @@ void main()
       
    }
 
-   panorama.xyz *= accumulation_normalization.xyz;
+   //panorama.xyz *= accumulation_normalization.xyz;
+   panorama.g = 1.0;
    panorama_buffer[output_index2].value = panorama;
 }
