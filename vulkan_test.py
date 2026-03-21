@@ -33,10 +33,12 @@ class VulkanCompute :
         self.command_pool = None
         self.device = None
         self.debug_report_callback = None
-        self.enable_validation_layers = False
+        self.enable_validation_layers = True
         self.physical_device = None
         self.descriptor_set_layout_bindings = None
         self.shader_file = None
+
+        self.enabled_layers = None
 
     # Load SPIR-V shader binary
     def load_shader(filename):
@@ -294,14 +296,14 @@ class VulkanCompute :
         vkEndCommandBuffer(self.command_buffer)
 
 
-    def CreateDescriptorSet(self,buffer, buffer_size):
+    def CreateDescriptorSet(self, descriptor_count):
         # So we will allocate a descriptor set here.
         # But we need to first create a descriptor pool to do that.
 
         # Our descriptor pool can only allocate a single storage buffer.
         descriptor_pool_size = VkDescriptorPoolSize(
             type=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            descriptorCount=1
+            descriptorCount=descriptor_count
         )
 
         descriptor_pool_info = VkDescriptorPoolCreateInfo(
@@ -400,7 +402,7 @@ class VulkanCompute :
 
         return pa
 
-    def Cleanup(self):
+    def __del__(self):
         # Clean up all Vulkan Resources.
 
         if self.enable_validation_layers:
@@ -411,7 +413,7 @@ class VulkanCompute :
             if self.debug_report_callback:
                 func(self.instance, self.debug_report_callback, None)
 
-        for binding, buffer, buffer_memory, buf_size in self.buffer_info:
+        for binding, buffer, buffer_memory, buffer_size in self.buffer_info:
             if buffer_memory:
                 vkFreeMemory(self.device, buffer_memory, None)
             if buffer:
@@ -466,7 +468,12 @@ class VulkanCompute :
         # Now we save the acquired color data to a .png.
         VulkanCompute.SaveImage(output_image, 'test.png')
 
-    def Setup(self, shader_file, num_cameras, height, width, channels, workgroup_size):
+
+    def DebugReportCallbackFn(*args):
+        print('Debug Report: {} {}'.format(args[5], args[6]))
+        return 0
+    
+    def Setup(self, shader_file, num_cameras, height, width, channels, workgroup_size, enable_validation_layers):
 
         self.shader_file = shader_file
 
@@ -475,6 +482,37 @@ class VulkanCompute :
         self.width = width
         self.channels = channels
         self.workgroup_size = workgroup_size
+
+        self.enable_validation_layers = enable_validation_layers
+
+        self.enabled_extensions = []
+
+        self.enabled_layers = []
+
+
+        if self.enable_validation_layers:
+            print(f'WARNING: Validation layers are {"enabled" if self.enable_validation_layers else "disabled"}. Make sure to disable validation layers in release builds for better performance.')
+            # We get all supported layers with vkEnumerateInstanceLayerProperties.
+            layer_properties = vkEnumerateInstanceLayerProperties()
+
+            VALIDATION_LAYER_NAME = "VK_LAYER_KHRONOS_validation"
+
+            # And then we simply check if VK_LAYER_KHRONOS_validation is among the supported layers.
+            supported_layer_names = [prop.layerName for prop in layer_properties]
+            if VALIDATION_LAYER_NAME not in supported_layer_names:
+                raise Exception(f'Layer {VALIDATION_LAYER_NAME} not supported')
+            self.enabled_layers.append(VALIDATION_LAYER_NAME)
+
+            # We need to enable an extension named VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+            # in order to be able to print the warnings emitted by the validation layer.
+            # So again, we just check if the extension is among the supported extensions.
+            extension_properties = vkEnumerateInstanceExtensionProperties(None)
+
+            EXTENSION_NAME = VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+            supported_extensions = [prop.extensionName for prop in extension_properties]
+            if EXTENSION_NAME not in supported_extensions:
+                raise Exception(f'Extension {EXTENSION_NAME} not supported')
+            self.enabled_extensions.append(EXTENSION_NAME)
 
         # Create Vulkan instance
         self.app_info = VkApplicationInfo(
@@ -488,7 +526,13 @@ class VulkanCompute :
 
         instance_info = VkInstanceCreateInfo(
             sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-            pApplicationInfo=self.app_info
+            flags=0,
+            pApplicationInfo=self.app_info,
+            # Give our desired layers and extensions to vulkan.
+            enabledLayerCount=len(self.enabled_layers),
+            ppEnabledLayerNames=self.enabled_layers,
+            enabledExtensionCount=len(self.enabled_extensions),
+            ppEnabledExtensionNames=self.enabled_extensions       
         )
 
         try:
@@ -496,6 +540,21 @@ class VulkanCompute :
         except VkErrorInitializationFailed:
             print("Failed to create Vulkan instance")
             sys.exit(1)
+
+        if self.enable_validation_layers:
+            createInfo = VkDebugReportCallbackCreateInfoEXT(
+                sType=VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
+                flags=VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT,
+                pfnCallback=VulkanCompute.DebugReportCallbackFn
+            )
+
+            # We have to explicitly load this function.
+            vkCreateDebugReportCallbackEXT = vkGetInstanceProcAddr(self.instance, 'vkCreateDebugReportCallbackEXT')
+            if vkCreateDebugReportCallbackEXT == ffi.NULL:
+                raise Exception('Could not load vkCreateDebugReportCallbackEXT')
+
+            # Create and register callback.
+            self.debug_report_callback = vkCreateDebugReportCallbackEXT(self.instance, createInfo, None)
 
         # Enumerate physical devices (GPUs)
         devices = vkEnumeratePhysicalDevices(self.instance)
@@ -616,7 +675,7 @@ class VulkanCompute :
 
         self.CreateComputePipeline()
 
-        self.CreateDescriptorSet(panorama_buffer, buffer_size)
+        self.CreateDescriptorSet(descriptor_count=len(self.buffer_info))
 
         # Next, we need to connect our actual storage buffer with the descriptor.
         # We use vkUpdateDescriptorSets() to update the descriptor set.
@@ -645,13 +704,10 @@ if __name__ == "__main__":
     workgroup_size = 16
 
     shader_file = "lerp.spv"
-    compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size)
+    compute.Setup(shader_file, num_cameras, height, width, channels, workgroup_size, enable_validation_layers=True)
 
     print("Vulkan compute pipeline created successfully.")
 
     compute.Run()
 
     print("Vulkan compute pipeline run successfully.")
-
-    compute.Cleanup()
-
