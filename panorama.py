@@ -26,7 +26,7 @@ from VulkanCompute import VulkanCompute
 
 two_pi = 2 * math.pi
 
-USE_CUDA = True
+USE_CUDA = False
 
 class CameraDatum :
 
