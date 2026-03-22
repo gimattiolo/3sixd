@@ -27,7 +27,7 @@ from VulkanCompute import VulkanCompute
 two_pi = 2 * math.pi
 
 # 0:cpi,1:cuda,2:vulkan
-COMPUTE_MODE = 2
+COMPUTE_MODE = 1
 
 class CameraDatum :
 
@@ -249,10 +249,8 @@ def Lerp(a0, a1, x) :
 # a1 is H,W,3, 
 # x is H,W
 def Lerp_vectorized(x, a0, a1, out) :
-    out += a0 + (a1 - a0) * x
-
-    # y = np.interp(x, xp=a0, fp=a1.reshape(Script.H*Script.W*3))
-    # out = y.reshape(Script.H, Script.W, 3)
+    #out += a0 + (a1 - a0) * x
+    out += np.where(x, a1, a0) # faster on cpu
 
 def Normalize(x) :
     return x / np.linalg.norm(x)
@@ -526,7 +524,9 @@ def panorama_main(daemon, process_args):
     panorama_bgr_numpy = np.zeros((args.H, args.W, 4), np.float32)
 
     if COMPUTE_MODE == 0 :
+
         pass
+
     elif COMPUTE_MODE == 1 :
 
         pixel_coords_cuda = cp.array(pixel_coords_numpy)
@@ -556,24 +556,13 @@ def panorama_main(daemon, process_args):
         if COMPUTE_MODE == 0 :
 
             # make panorama
-            panorama_bgr_numpy[:] = 0.0 
+            panorama_bgr_numpy.fill(0.0) 
             for pin_id in cameraData_shared.keys() :
 
                 pixel = pixel_coords_numpy[pin_id,:,:,:]
                 color = colors_bgr_numpy[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
 
-                ### debug ###
-
-                #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
-                
-                #color.fill(0.0)
-                #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
-                #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
-
-                #############
-
                 Lerp_vectorized(conditions_numpy[pin_id,:,:,:], 0.0, color, panorama_bgr_numpy)
-                #Lerp_vectorized(zeros, zeros, color, panorama)
 
             panorama_bgr_numpy *= accumulation_normalization_numpy
 
@@ -582,24 +571,13 @@ def panorama_main(daemon, process_args):
             colors_bgr_cuda = cp.array(colors_bgr_numpy)
 
             # make panorama
-            panorama_bgr_cuda[:] = 0.0 
+            panorama_bgr_cuda.fill(0.0)
             for pin_id in cameraData_shared.keys() :
 
                 pixel = pixel_coords_cuda[pin_id,:,:,:]
                 color = colors_bgr_cuda[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
 
-                ### debug ###
-
-                #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
-                
-                #color.fill(0.0)
-                #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
-                #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
-
-                #############
-
                 Lerp_vectorized(conditions_cuda[pin_id,:,:,:], 0.0, color, panorama_bgr_cuda)
-                #Lerp_vectorized(zeros, zeros, color, panorama)
 
             panorama_bgr_cuda *= accumulation_normalization_cuda
 
@@ -1136,6 +1114,7 @@ class Script :
 
             delta_time_sec_30fps = 1.0 / 30.0
             delta_time_sec_60fps = 1.0 / 60.0
+            delta_time_sec_120fps = 1.0 / 120.0
             zero_delta_time_sec  = 1.0 / 1000.0
 
             # Create threads
