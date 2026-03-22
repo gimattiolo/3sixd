@@ -26,7 +26,8 @@ from VulkanCompute import VulkanCompute
 
 two_pi = 2 * math.pi
 
-USE_CUDA = False
+# 0:cpi,1:cuda,2:vulkan
+COMPUTE_MODE = 0
 
 class CameraDatum :
 
@@ -509,34 +510,36 @@ def panorama_main(daemon, process_args):
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
 
-    pixel_coords = np.zeros((len(cameraData_shared), args.H, args.W, 2), dtype=np.int32)
-    conditions = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=np.float32)
+    pixel_coords_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 2), dtype=np.int32)
+    conditions_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=np.float32)
 
     for pin_id in cameraData_shared.keys() :
 
-        pixel_coords[pin_id,:,:,0:3] = np.array(args.pixel_coords[pin_id])
-        conditions[pin_id,:,:,0:3] = np.array(args.conditions[pin_id])
+        pixel_coords_numpy[pin_id,:,:,0:3] = np.array(args.pixel_coords[pin_id])
+        conditions_numpy[pin_id,:,:,0:3] = np.array(args.conditions[pin_id])
 
-    accumulation_normalization = np.array(args.accumulation_normalization)
+    accumulation_normalization_numpy = np.array(args.accumulation_normalization)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
 
-    panorama = np.zeros((args.H, args.W, 4), np.float32)
+    panorama_bgr_numpy = np.zeros((args.H, args.W, 4), np.float32)
 
-    if USE_CUDA :
+    if COMPUTE_MODE == 0 :
+        pass
+    elif COMPUTE_MODE == 1 :
 
-        pixel_coords_cuda = cp.array(pixel_coords)
-        conditions_cuda = cp.array(conditions)
-        accumulation_normalization_cuda = cp.array(accumulation_normalization)
-        panorama_bgr_cuda = cp.array(panorama)
+        pixel_coords_cuda = cp.array(pixel_coords_numpy)
+        conditions_cuda = cp.array(conditions_numpy)
+        accumulation_normalization_cuda = cp.array(accumulation_normalization_numpy)
+        panorama_bgr_cuda = cp.array(panorama_bgr_numpy)
 
-    else :
+    elif COMPUTE_MODE == 2 :
 
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
-        compute.Setup(colors_bgr_numpy, pixel_coords, conditions, accumulation_normalization, panorama, shader_file, workgroup_size, enable_validation_layers=True)
+        compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr, shader_file, workgroup_size, enable_validation_layers=True)
 
     while not event.is_set() :
 
@@ -548,11 +551,35 @@ def panorama_main(daemon, process_args):
 
         start_time = time.time()
 
-        if USE_CUDA :        
+        ### shader begins ###
+
+        if COMPUTE_MODE == 0 :
+
+            # make panorama
+            panorama_bgr_numpy[:] = 0.0 
+            for pin_id in cameraData_shared.keys() :
+
+                pixel = pixel_coords_numpy[pin_id,:,:,:]
+                color = colors_bgr_numpy[pin_id, pixel[:, :, 0], pixel[:, :, 1], :]
+
+                ### debug ###
+
+                #panorama[:, :, 2] = 255.0 * pixel[:, :, 1].astype(np.float32) / 1920.0
+                
+                #color.fill(0.0)
+                #color[:,:, 2] = 255.0 * 0.5 * (1.0 + ray_inW[:, :, 0].astype(np.float32))
+                #color[:,:, 2] = 255.0 * ray_inW[:, :, 0].astype(np.float32)
+
+                #############
+
+                Lerp_vectorized(conditions_numpy[pin_id,:,:,:], 0.0, color, panorama_bgr_numpy)
+                #Lerp_vectorized(zeros, zeros, color, panorama)
+
+            panorama_bgr_numpy *= accumulation_normalization_numpy
+
+        elif COMPUTE_MODE == 1 :
 
             colors_bgr_cuda = cp.array(colors_bgr_numpy)
-
-            ### shader begins ###
 
             # make panorama
             panorama_bgr_cuda[:] = 0.0 
@@ -578,12 +605,12 @@ def panorama_main(daemon, process_args):
 
             panorama_bgr_numpy = cp.asnumpy(panorama_bgr_cuda)
 
-        else :
+        elif COMPUTE_MODE == 2 :
+
             binding_id = 1
             binding, buffer, buffer_memory, buffer_array_size = compute.buffer_info[binding_id]
             assert binding == binding_id
             compute.InitializeBuffer(colors_bgr_numpy, buffer_memory, buffer_array_size)
-        
 
             compute.RunCommandBuffer()
 
@@ -595,11 +622,11 @@ def panorama_main(daemon, process_args):
         ### shader ends ###
         pan_duration_s = time.time() - start_time
 
-        panorama_bgr_numpy = (panorama_bgr_numpy[:,:,0:3]*255).astype(np.uint8)
+        panorama_bgr = (panorama_bgr_numpy[:,:,0:3]*255).astype(np.uint8)
 
-        bytes.put(panorama_bgr_numpy.tobytes(), block=False)
+        bytes.put(panorama_bgr.tobytes(), block=False)
 
-        panoramas.put(panorama_bgr_numpy, block=False)
+        panoramas.put(panorama_bgr, block=False)
 
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
@@ -755,7 +782,7 @@ class Script :
 
             pin_ids = list(cameraData_shared.keys())
 
-            print(f'Using CUDA:{USE_CUDA}')
+            print(f'Compute mode:{COMPUTE_MODE}')
 
             print(f'Using cameras:{cameraData_shared}')
 
