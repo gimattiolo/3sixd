@@ -354,7 +354,7 @@ class VulkanCompute :
     #     # perform the update of the descriptor set.
     #     vkUpdateDescriptorSets(self.device, descriptorWriteCount=1, pDescriptorWrites=[read_descriptor_set], descriptorCopyCount=0, pDescriptorCopies=None)
 
-    def RunCommandBuffer(self):
+    def SubmitCommandBuffer(self):
         # Now we shall finally submit the recorded command buffer to a queue.
         submit_info = VkSubmitInfo(
             sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -372,6 +372,11 @@ class VulkanCompute :
         # We submit the command buffer on the queue, at the same time giving a fence.
         vkQueueSubmit(self.queue, submitCount=1, pSubmits=[submit_info], fence=fence)
 
+        return fence
+        
+
+    def GetBufferAsNumpy(self, fence, binding_id):
+
         # The command will not have finished executing until the fence is signalled.
         # So we wait here.
         # We will directly after this read our buffer from the GPU,
@@ -380,8 +385,6 @@ class VulkanCompute :
         vkWaitForFences(self.device, fenceCount=1, pFences=[fence], waitAll=True, timeout=100000000000)
 
         vkDestroyFence(self.device, fence, None)
-
-    def GetBufferAsNumpy(self, binding_id):
 
         binding, buffer, buffer_memory, buffer_size = self.buffer_info[binding_id]
 

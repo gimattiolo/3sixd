@@ -26,8 +26,8 @@ from VulkanCompute import VulkanCompute
 
 two_pi = 2 * math.pi
 
-# 0:cpi,1:cuda,2:vulkan
-COMPUTE_MODE = 1
+# 0:cpu,1:cuda,2:vulkan
+COMPUTE_MODE = 2
 
 class CameraDatum :
 
@@ -541,6 +541,11 @@ def panorama_main(daemon, process_args):
         shader_file = 'lerp.spv'
         compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr_numpy, shader_file, workgroup_size, enable_validation_layers=True)
 
+        binding_id = 1
+        binding, buffer, buffer_memory, buffer_array_size = compute.buffer_info[binding_id]
+        assert binding == binding_id
+        fence = None
+
     while not event.is_set() :
 
         for pin_id in cameraData_shared.keys() :
@@ -585,17 +590,10 @@ def panorama_main(daemon, process_args):
 
         elif COMPUTE_MODE == 2 :
 
-            binding_id = 1
-            binding, buffer, buffer_memory, buffer_array_size = compute.buffer_info[binding_id]
-            assert binding == binding_id
-            compute.InitializeBuffer(colors_bgr_numpy, buffer_memory, buffer_array_size)
-
-            compute.RunCommandBuffer()
-
             # get the results into a numpy array here
-            panorama_bgr_numpy = compute.GetBufferAsNumpy(binding_id=4)
-
-            #VulkanCompute.SaveImage(panorama_bgr_numpy, 'test.png')
+            if fence :
+                panorama_bgr_numpy = compute.GetBufferAsNumpy(fence, binding_id=4)
+                #VulkanCompute.SaveImage(panorama_bgr_numpy, 'test.png')
 
         ### shader ends ###
         pan_duration_s = time.time() - start_time
@@ -605,6 +603,11 @@ def panorama_main(daemon, process_args):
         bytes.put(panorama_bgr.tobytes(), block=False)
 
         panoramas.put(panorama_bgr, block=False)
+
+        if COMPUTE_MODE == 2 :
+            compute.InitializeBuffer(colors_bgr_numpy, buffer_memory, buffer_array_size)
+
+            fence = compute.SubmitCommandBuffer()
 
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
