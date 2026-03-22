@@ -204,7 +204,7 @@ def Dir2Angle(dir_input) :
     gamma_theta.x = math.acos(dir.x)
     gamma_theta.x = Lerp(gamma_theta.x, two_pi - gamma_theta.x, dir.z < 0.0)
 
-    return gamma_theta
+    return 
 
 def Dir2Angle_vectorized(dir_input) :
 
@@ -397,8 +397,8 @@ def GetPinsData(pairs_list, flip_methods_list) :
     return pin_data
 
 def encoding_main(daemon, process_args):
+
     args, bytes, delay_sec, event = process_args
-    print(f'encoding_main starting...')
 
     # UDP destination address and port
     url=f'udp://{args.udp_address}:{args.udp_port}?pkt_size={args.udp_packet_size}'
@@ -499,15 +499,10 @@ def encoding_main(daemon, process_args):
     process.stdin.close()
     process.wait()
 
-
-
-    print(f'encoding_main done.')
+    daemon.Exit()
 
 def panorama_main(daemon, process_args):
-
     args, cameraData_shared, panoramas, bytes, delay_sec, event = process_args
-
-    print(f'panorama_main starting...')
 
     colors_bgr_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=np.float32)
 
@@ -616,13 +611,10 @@ def panorama_main(daemon, process_args):
     while not panoramas.empty() :
         time.sleep(delay_sec)
 
-    print(f'panorama_main done.')
+    daemon.Exit()
 
 def camera_main(daemon, process_args):
-
     args, cameraData_shared, delay_sec, event = process_args
-
-    print(f'camera_main starting...')
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -678,7 +670,7 @@ def camera_main(daemon, process_args):
 
         time.sleep(delay_sec)
 
-    print(f'camera_main done.')
+    daemon.Exit()
 
 class DaemonBase :
     def reset(self) :
@@ -692,12 +684,18 @@ class DaemonBase :
         self.main = main
         self.name = name
 
+    def Start(self) :
+        print(f'Starting {self.name}...')
+        self.thread.start()
 
-# class DaemonThread (DaemonBase) :
+    def Exit(self) :
+        print(f'Exiting {self.name}...')
 
-#     def __init__(self, name, main, args) :
-#         super().__init__(name, main)
-#         self.thread = threading.Thread(target=main, args=(self, args,), daemon=True)
+class DaemonThread (DaemonBase) :
+
+    def __init__(self, name, main, args) :
+        super().__init__(name, main)
+        self.thread = threading.Thread(target=main, args=(self, args,), daemon=True)
 
 class DaemonProcess (DaemonBase) :
 
@@ -1131,7 +1129,7 @@ class Script :
 
             # Start threads
             for daemon, event in Script.daemons :  
-                daemon.thread.start()
+                daemon.Start()
 
             #in msec
             waitKeyPeriod_msec = int(delta_time_sec_60fps * 1000.0)
