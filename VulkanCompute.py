@@ -367,17 +367,17 @@ class VulkanCompute :
             sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             flags=0
         )
-        fence = vkCreateFence(self.device, fence_info, None)
+        fence = vkCreateFence(self.device, fence_info, pAllocator=None)
 
         # We submit the command buffer on the queue, at the same time giving a fence.
-        vkQueueSubmit(self.queue, 1, submit_info, fence)
+        vkQueueSubmit(self.queue, submitCount=1, pSubmits=[submit_info], fence=fence)
 
         # The command will not have finished executing until the fence is signalled.
         # So we wait here.
         # We will directly after this read our buffer from the GPU,
         # and we will not be sure that the command has finished executing unless we wait for the fence.
         # Hence, we use a fence here.
-        vkWaitForFences(self.device, 1, [fence], VK_TRUE, 100000000000)
+        vkWaitForFences(self.device, fenceCount=1, pFences=[fence], waitAll=True, timeout=100000000000)
 
         vkDestroyFence(self.device, fence, None)
 
@@ -411,35 +411,35 @@ class VulkanCompute :
             if func == ffi.NULL:
                 raise Exception('Could not load vkDestroyDebugReportCallbackEXT')
             if self.debug_report_callback:
-                func(self.instance, self.debug_report_callback, None)
+                func(self.instance, self.debug_report_callback, pAllocator=None)
 
         for binding, buffer, buffer_memory, buffer_size in self.buffer_info:
             if buffer_memory:
-                vkFreeMemory(self.device, buffer_memory, None)
+                vkFreeMemory(self.device, buffer_memory, pAllocator=None)
             if buffer:
-                vkDestroyBuffer(self.device, buffer, None)
+                vkDestroyBuffer(self.device, buffer, pAllocator=None)
         if self.shader_module:
-            vkDestroyShaderModule(self.device, self.shader_module, None)
+            vkDestroyShaderModule(self.device, self.shader_module, pAllocator=None)
         if self.descriptor_pool:
-            vkDestroyDescriptorPool(self.device, self.descriptor_pool, None)
+            vkDestroyDescriptorPool(self.device, self.descriptor_pool, pAllocator=None)
         if self.descriptor_set_layout:
-            vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, None)
+            vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, pAllocator=None)
         if self.pipeline_layout:
-            vkDestroyPipelineLayout(self.device, self.pipeline_layout, None)
+            vkDestroyPipelineLayout(self.device, self.pipeline_layout, pAllocator=None)
         if self.pipeline:
-            vkDestroyPipeline(self.device, self.pipeline, None)
+            vkDestroyPipeline(self.device, self.pipeline, pAllocator=None)
         if self.command_pool:
-            vkDestroyCommandPool(self.device, self.command_pool, None)
+            vkDestroyCommandPool(self.device, self.command_pool, pAllocator=None)
         if self.device:
-            vkDestroyDevice(self.device, None)
+            vkDestroyDevice(self.device, pAllocator=None)
         if self.instance:
-            vkDestroyInstance(self.instance, None)
+            vkDestroyInstance(self.instance, pAllocator=None)
 
     def InitializeBuffer(self, numpy_array, buffer_memory, buffer_size):
 
         # Ensure array is contiguous in memory
-        if not numpy_array.flags['C_CONTIGUOUS']:
-            numpy_array = np.ascontiguousarray(numpy_array)
+        # if not numpy_array.flags['C_CONTIGUOUS']:
+        #     numpy_array = np.ascontiguousarray(numpy_array)
 
         ffi_buffer = vkMapMemory(self.device, buffer_memory, offset=0, size=buffer_size, flags=0)
         src_bytes = numpy_array.tobytes()
