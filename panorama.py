@@ -27,7 +27,7 @@ from VulkanCompute import VulkanCompute
 two_pi = 2 * math.pi
 
 # 0:cpi,1:cuda,2:vulkan
-COMPUTE_MODE = 0
+COMPUTE_MODE = 2
 
 class CameraDatum :
 
@@ -539,7 +539,7 @@ def panorama_main(daemon, process_args):
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
-        compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr, shader_file, workgroup_size, enable_validation_layers=True)
+        compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr_numpy, shader_file, workgroup_size, enable_validation_layers=True)
 
     while not event.is_set() :
 
