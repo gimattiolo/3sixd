@@ -613,6 +613,12 @@ def panorama_main(daemon, process_args):
 
         time.sleep(delay_sec)
 
+    if COMPUTE_MODE == 2 :
+        # complete execution before exiting
+        if fence :
+            panorama_bgr_numpy = compute.GetBufferAsNumpy(fence, binding_id=4)
+
+    # wait for empty queues before exiting
     while not bytes.empty() :
         time.sleep(delay_sec)
 
