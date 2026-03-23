@@ -499,9 +499,9 @@ def encoding_main(daemon, process_args):
     daemon.Exit()
 
 def panorama_main(daemon, process_args):
-    args, cameraData_shared, shared_name, shared_shape, lock, panoramas, bytes, delay_sec, event = process_args
+    args, cameraData_shared, shared_name, shared_shape, shared_type, lock, panoramas, bytes, delay_sec, event = process_args
 
-    colors_bgr_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=np.float32)
+    colors_bgr_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=shared_type)
 
     # zeros = np.zeros(Script.H*Script.W*3, dtype=np.float32)
     # ones = np.ones(Script.H*Script.W*3, dtype=np.float32)
@@ -544,9 +544,9 @@ def panorama_main(daemon, process_args):
         assert binding == binding_id
         fence = None
 
-    existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+    shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
     # Create a NumPy array backed by shared memory
-    frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
+    frames_bgr = np.ndarray(shared_shape, dtype=shared_type, buffer=shm.buf)
 
     while not event.is_set() :
 
@@ -627,12 +627,12 @@ def panorama_main(daemon, process_args):
     while not panoramas.empty() :
         time.sleep(delay_sec)
 
-    existing_shm.close()
+    shm.close()
 
     daemon.Exit()
 
 def camera_main(daemon, process_args):
-    args, cameraData_shared, shared_name, shared_shape, lock, delay_sec, event = process_args
+    args, cameraData_shared, shared_name, shared_shape, shared_type, lock, delay_sec, event = process_args
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -643,17 +643,17 @@ def camera_main(daemon, process_args):
 
     iteration = 0
 
-    local_frames_bgr = np.ndarray(shared_shape, dtype=np.float32)
+    local_frames_bgr = np.ndarray(shared_shape, dtype=shared_type)
 
-    existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+    shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
     # Create a NumPy array backed by shared memory
-    frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
+    frames_bgr = np.ndarray(shared_shape, dtype=shared_type, buffer=shm.buf)
 
     while not event.is_set() :
 
         camerasOK = True
 
-        color = np.zeros(3, dtype=np.float32)
+        color = np.zeros(3, dtype=shared_type)
 
         # start_time = time.time()
         for pin_id in cameraData_shared.keys() :
@@ -710,7 +710,7 @@ def camera_main(daemon, process_args):
 
         iteration += 1
 
-    existing_shm.close()
+    shm.close()
 
     daemon.Exit()
 
@@ -1156,8 +1156,8 @@ class Script :
             delta_time_sec_120fps = 1.0 / 120.0
             zero_delta_time_sec  = 1.0 / 1000.0
 
-            allocated_array = np.zeros((num_cameras, Script.args.H, Script.args.W, 4), dtype=np.float32) 
-            shm = multiprocessing.shared_memory.SharedMemory(create=True, size=allocated_array.nbytes)
+            shared_array = np.zeros((num_cameras, Script.args.H, Script.args.W, 4), dtype=np.float32) 
+            shm = multiprocessing.shared_memory.SharedMemory(create=True, size=shared_array.nbytes)
 
             lock = multiprocessing.Lock()            
 
@@ -1170,11 +1170,11 @@ class Script :
                 Script.daemons.append((encoding_daemon, encoding_stop_event))
 
             camera_stop_event = multiprocessing.Event()
-            camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, cameraData_shared, shm.name, allocated_array.shape, lock, delta_time_sec_60fps, camera_stop_event))
+            camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, cameraData_shared, shm.name, shared_array.shape, shared_array.dtype, lock, delta_time_sec_60fps, camera_stop_event))
             Script.daemons.append((camera_daemon, camera_stop_event))
 
             panorama_stop_event = multiprocessing.Event()
-            panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, cameraData_shared, shm.name, allocated_array.shape, lock, panoramas, bytes, delta_time_sec_60fps, panorama_stop_event))
+            panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, cameraData_shared, shm.name, shared_array.shape, shared_array.dtype, lock, panoramas, bytes, delta_time_sec_60fps, panorama_stop_event))
             Script.daemons.append((panorama_daemon, panorama_stop_event))
 
             # Start threads
