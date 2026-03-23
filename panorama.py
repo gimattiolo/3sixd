@@ -637,9 +637,14 @@ def camera_main(daemon, process_args):
     thickness              = 10
     lineType               = cv2.LINE_8
 
+    iteration = 0
+    color = np.zeros((3), dtype=np.float32)
+
     while not event.is_set() :
 
         camerasOK = True
+
+        color.fill(0.0)
 
         # start_time = time.time()
         for pin_id in cameraData_shared.keys() :
@@ -648,7 +653,12 @@ def camera_main(daemon, process_args):
             if args.benchmark :
 
                 cameraDatum.frame_bgr = args.black_bgr_frame.copy()
-                cameraDatum.frame_bgr[:,:,2] = (pin_id + 1.0) / len(cameraData_shared)
+
+                color[2] = (pin_id + 1.0) / len(cameraData_shared)
+
+                cameraDatum.frame_bgr[:, :, 0] = color[0]
+                cameraDatum.frame_bgr[:, :, 1] = color[1]
+                cameraDatum.frame_bgr[:, :, 2] = color[2]
 
             else :
 
@@ -683,6 +693,8 @@ def camera_main(daemon, process_args):
             print('Unable to open all the required cameras')
 
         time.sleep(delay_sec)
+
+        iteration += 1
 
     daemon.Exit()
 
