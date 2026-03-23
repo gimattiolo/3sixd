@@ -544,16 +544,14 @@ def panorama_main(daemon, process_args):
         assert binding == binding_id
         fence = None
 
-    while not event.is_set() :
+    existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+    # Create a NumPy array backed by shared memory
+    frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
 
-        existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
-        # Create a NumPy array backed by shared memory
-        frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
+    while not event.is_set() :
 
         with lock:
             colors_bgr_numpy = frames_bgr.copy()
-
-        existing_shm.close()
 
         # print(f'{pin_id}|{colors_bgr_numpy[pin_id,0,0,0:3]}')
 
@@ -629,6 +627,8 @@ def panorama_main(daemon, process_args):
     while not panoramas.empty() :
         time.sleep(delay_sec)
 
+    existing_shm.close()
+
     daemon.Exit()
 
 def camera_main(daemon, process_args):
@@ -645,6 +645,9 @@ def camera_main(daemon, process_args):
 
     local_frames_bgr = np.ndarray(shared_shape, dtype=np.float32)
 
+    existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+    # Create a NumPy array backed by shared memory
+    frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
 
     while not event.is_set() :
 
@@ -692,15 +695,9 @@ def camera_main(daemon, process_args):
                 else :
                     camerasOK = False
 
-        existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
-        # Create a NumPy array backed by shared memory
-        frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
-
         # copy to shared memory
         with lock:
             frames_bgr[:] = local_frames_bgr[:]
-
-        existing_shm.close()
 
         # print(f'{time.time() - start_time}')
 
@@ -712,6 +709,8 @@ def camera_main(daemon, process_args):
         time.sleep(delay_sec)
 
         iteration += 1
+
+    existing_shm.close()
 
     daemon.Exit()
 
