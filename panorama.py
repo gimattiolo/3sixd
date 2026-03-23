@@ -27,7 +27,7 @@ from VulkanCompute import VulkanCompute
 two_pi = 2 * math.pi
 
 # 0:cpu,1:cuda,2:vulkan
-COMPUTE_MODE = 2
+COMPUTE_MODE = 0
 
 class CameraDatum :
 
@@ -37,7 +37,6 @@ class CameraDatum :
         self.identifier = ''
         self.file = ''
         self.capture = None
-        self.frame_bgr = None # always normalized to [0,1]
         self.IntrinsicMatrix = None
         self.Distortion = None
         self.ReprojectionError = None
@@ -50,7 +49,6 @@ class CameraDatum :
         self.reset()
 
     def release(self) :
-        self.frame_bgr = None
         if self.capture :
             self.capture.release()
         self.reset()
@@ -501,7 +499,7 @@ def encoding_main(daemon, process_args):
     daemon.Exit()
 
 def panorama_main(daemon, process_args):
-    args, cameraData_shared, panoramas, bytes, delay_sec, event = process_args
+    args, cameraData_shared, shared_name, shared_shape, lock, panoramas, bytes, delay_sec, event = process_args
 
     colors_bgr_numpy = np.zeros((len(cameraData_shared), args.H, args.W, 4), dtype=np.float32)
 
@@ -548,11 +546,16 @@ def panorama_main(daemon, process_args):
 
     while not event.is_set() :
 
-        for pin_id in cameraData_shared.keys() :
-            cameraDatum = cameraData_shared[pin_id]
-            colors_bgr_numpy[pin_id,:,:,0:3] = cameraDatum.frame_bgr
+        existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+        # Create a NumPy array backed by shared memory
+        frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
 
-            # print(f'{pin_id}|{colors_bgr_numpy[pin_id,0,0,0:3]}')
+        with lock:
+            colors_bgr_numpy = frames_bgr.copy()
+
+        existing_shm.close()
+
+        # print(f'{pin_id}|{colors_bgr_numpy[pin_id,0,0,0:3]}')
 
         start_time = time.time()
 
@@ -596,6 +599,7 @@ def panorama_main(daemon, process_args):
                 #VulkanCompute.SaveImage(panorama_bgr_numpy, 'test.png')
 
         ### shader ends ###
+
         pan_duration_s = time.time() - start_time
 
         panorama_bgr = (panorama_bgr_numpy[:,:,0:3]*255).astype(np.uint8)
@@ -628,7 +632,7 @@ def panorama_main(daemon, process_args):
     daemon.Exit()
 
 def camera_main(daemon, process_args):
-    args, cameraData_shared, delay_sec, event = process_args
+    args, cameraData_shared, shared_name, shared_shape, lock, delay_sec, event = process_args
 
     font                   = cv2.FONT_HERSHEY_SIMPLEX
     origin = (0,150)
@@ -638,13 +642,15 @@ def camera_main(daemon, process_args):
     lineType               = cv2.LINE_8
 
     iteration = 0
-    color = np.zeros((3), dtype=np.float32)
+
+    local_frames_bgr = np.ndarray(shared_shape, dtype=np.float32)
+
 
     while not event.is_set() :
 
         camerasOK = True
 
-        color.fill(0.0)
+        color = np.zeros(3, dtype=np.float32)
 
         # start_time = time.time()
         for pin_id in cameraData_shared.keys() :
@@ -652,26 +658,28 @@ def camera_main(daemon, process_args):
 
             if args.benchmark :
 
-                cameraDatum.frame_bgr = args.black_bgr_frame.copy()
+                local_frames_bgr[pin_id, :, :, :] = args.black_bgr_frame.copy()
 
-                color[2] = (pin_id + 1.0) / len(cameraData_shared)
+                color.fill(0.0)
 
-                cameraDatum.frame_bgr[:, :, 0] = color[0]
-                cameraDatum.frame_bgr[:, :, 1] = color[1]
-                cameraDatum.frame_bgr[:, :, 2] = color[2]
+                color[iteration % 3] = (pin_id + 1.0) / len(cameraData_shared)
+
+                local_frames_bgr[pin_id, :, :, 0] = color[0]
+                local_frames_bgr[pin_id, :, :, 1] = color[1]
+                local_frames_bgr[pin_id, :, :, 2] = color[2]
 
             else :
 
                 if cameraDatum.capture.isOpened() :
                     # Capture frame-by-frame
-                    ret, cameraDatum.frame_bgr = cameraDatum.capture.read()
-                    cameraDatum.frame_bgr /= 255.0
+                    ret, local_frames_bgr[pin_id, :, :, :] = cameraDatum.capture.read()
+                    local_frames_bgr[pin_id, :, :, :] /= 255.0
                     if not ret :
                         print(f'{pin_id} not reading frames')
-                        cameraDatum.frame_bgr = args.empty_frame_bgr.copy()
+                        local_frames_bgr[pin_id, :, :, :] = args.empty_frame_bgr.copy()
 
                     if args.show_pin :
-                        cv2.putText(cameraDatum.frame_bgr, 
+                        cv2.putText(local_frames_bgr[pin_id, :, :, :], 
                             f'Pin{pin_id}', 
                             origin, 
                             font, 
@@ -684,7 +692,16 @@ def camera_main(daemon, process_args):
                 else :
                     camerasOK = False
 
-            cameraData_shared[pin_id] = cameraDatum
+        existing_shm = multiprocessing.shared_memory.SharedMemory(name=shared_name)
+        # Create a NumPy array backed by shared memory
+        frames_bgr = np.ndarray(shared_shape, dtype=np.float32, buffer=existing_shm.buf)
+
+        # copy to shared memory
+        with lock:
+            frames_bgr[:] = local_frames_bgr[:]
+
+        existing_shm.close()
+
         # print(f'{time.time() - start_time}')
 
         # Display the resulting frame
@@ -792,7 +809,9 @@ class Script :
             size_default = (Script.args.H,Script.args.W) 
 
             # empty frame is red
-            Script.args.black_bgr_frame = np.zeros((Script.args.H, Script.args.W, 3), dtype=np.float32)
+            Script.args.black_bgr_frame = np.zeros((Script.args.H, Script.args.W, 4), dtype=np.float32)
+            Script.args.black_bgr_frame[:, :, 3] = 1.0 
+
             Script.args.empty_frame_bgr = Script.args.black_bgr_frame.copy() 
             Script.args.empty_frame_bgr[:, :, 2] = 1.0 
 
@@ -1138,6 +1157,11 @@ class Script :
             delta_time_sec_120fps = 1.0 / 120.0
             zero_delta_time_sec  = 1.0 / 1000.0
 
+            allocated_array = np.zeros((num_cameras, Script.args.H, Script.args.W, 4), dtype=np.float32) 
+            shm = multiprocessing.shared_memory.SharedMemory(create=True, size=allocated_array.nbytes)
+
+            lock = multiprocessing.Lock()            
+
             # Create threads
             Script.daemons = []
 
@@ -1147,11 +1171,11 @@ class Script :
                 Script.daemons.append((encoding_daemon, encoding_stop_event))
 
             camera_stop_event = multiprocessing.Event()
-            camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, cameraData_shared, delta_time_sec_60fps, camera_stop_event))
+            camera_daemon = DaemonProcess('CameraDaemon', camera_main, (Script.args, cameraData_shared, shm.name, allocated_array.shape, lock, delta_time_sec_60fps, camera_stop_event))
             Script.daemons.append((camera_daemon, camera_stop_event))
 
             panorama_stop_event = multiprocessing.Event()
-            panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, cameraData_shared, panoramas, bytes, delta_time_sec_60fps, panorama_stop_event))
+            panorama_daemon = DaemonProcess('PanoramaDaemon', panorama_main, (Script.args, cameraData_shared, shm.name, allocated_array.shape, lock, panoramas, bytes, delta_time_sec_60fps, panorama_stop_event))
             Script.daemons.append((panorama_daemon, panorama_stop_event))
 
             # Start threads
@@ -1223,6 +1247,9 @@ class Script :
             # When everything done, release the captures
             for pin_id in cameraData_shared.keys() :
                 cameraData_shared[pin_id].release()
+
+            shm.close()
+            shm.unlink()  # Free the shared memory block
 
         cv2.destroyAllWindows()
 
