@@ -26,9 +26,6 @@ from VulkanCompute import VulkanCompute
 
 two_pi = 2 * math.pi
 
-# 0:cpu,1:cuda,2:vulkan
-COMPUTE_MODE = 0
-
 class CameraDatum :
 
     def reset(self) :
@@ -521,23 +518,23 @@ def panorama_main(daemon, process_args):
 
     panorama_bgr_numpy = np.zeros((args.H, args.W, 4), np.float32)
 
-    if COMPUTE_MODE == 0 :
+    if args.compute_mode == 0 :
 
         pass
 
-    elif COMPUTE_MODE == 1 :
+    elif args.compute_mode == 1 :
 
         pixel_coords_cuda = cp.array(pixel_coords_numpy)
         conditions_cuda = cp.array(conditions_numpy)
         accumulation_normalization_cuda = cp.array(accumulation_normalization_numpy)
         panorama_bgr_cuda = cp.array(panorama_bgr_numpy)
 
-    elif COMPUTE_MODE == 2 :
+    elif args.compute_mode == 2 :
 
         compute = VulkanCompute()
         workgroup_size = 32
         shader_file = 'lerp.spv'
-        compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr_numpy, shader_file, workgroup_size, enable_validation_layers=True)
+        compute.Setup(colors_bgr_numpy, pixel_coords_numpy, conditions_numpy, accumulation_normalization_numpy, panorama_bgr_numpy, shader_file, workgroup_size, enable_validation_layers=args.enable_validation)
 
         binding_id = 1
         binding, buffer, buffer_memory, buffer_array_size = compute.buffer_info[binding_id]
@@ -559,7 +556,7 @@ def panorama_main(daemon, process_args):
 
         ### shader begins ###
 
-        if COMPUTE_MODE == 0 :
+        if args.compute_mode == 0 :
 
             # make panorama
             panorama_bgr_numpy.fill(0.0) 
@@ -572,7 +569,7 @@ def panorama_main(daemon, process_args):
 
             panorama_bgr_numpy *= accumulation_normalization_numpy
 
-        elif COMPUTE_MODE == 1 :
+        elif args.compute_mode == 1 :
 
             colors_bgr_cuda = cp.array(colors_bgr_numpy)
 
@@ -589,7 +586,7 @@ def panorama_main(daemon, process_args):
 
             panorama_bgr_numpy = cp.asnumpy(panorama_bgr_cuda)
 
-        elif COMPUTE_MODE == 2 :
+        elif args.compute_mode == 2 :
 
             # get the results into a numpy array here
             if fence :
@@ -598,24 +595,24 @@ def panorama_main(daemon, process_args):
 
         ### shader ends ###
 
-        pan_duration_s = time.time() - start_time
-
         panorama_bgr = (panorama_bgr_numpy[:,:,0:3]*255).astype(np.uint8)
 
         bytes.put(panorama_bgr.tobytes(), block=False)
 
         panoramas.put(panorama_bgr, block=False)
 
-        if COMPUTE_MODE == 2 :
+        if args.compute_mode == 2 :
             compute.InitializeBuffer(colors_bgr_numpy, buffer_memory, buffer_array_size)
 
             fence = compute.SubmitCommandBuffer()
+
+        pan_duration_s = time.time() - start_time
 
         print(f'Pan:{pan_duration_s * 1000} ms|FPS:{1.0 / pan_duration_s}')
 
         time.sleep(delay_sec)
 
-    if COMPUTE_MODE == 2 :
+    if args.compute_mode == 2 :
         # complete execution before exiting
         if fence :
             panorama_bgr_numpy = compute.GetBufferAsNumpy(fence, binding_id=4)
@@ -767,6 +764,8 @@ class Script :
         parser.add_argument('--height', dest='H', type=int, default=1080, help='height of the output image')
         parser.add_argument('--width', dest='W', type=int, default=1920, help='width of the output image')
         parser.add_argument('--multiprocessing_start', type=str, default='spawn', help='multiprocessing start method')
+        parser.add_argument('--enable_validation', action='store_true', help='Enable validation layers')
+        parser.add_argument('--compute_mode', type=int, default=0, help='0:cpu,1:cuda,2:vulkan')
 
         Script.args = parser.parse_args()
 
@@ -797,7 +796,7 @@ class Script :
 
             pin_ids = list(cameraData_shared.keys())
 
-            print(f'Compute mode:{COMPUTE_MODE}')
+            print(f'Compute mode:{Script.args.compute_mode}')
 
             print(f'Using cameras:{cameraData_shared}')
 
@@ -1224,7 +1223,7 @@ class Script :
                     else : 
                         print(f'Unable to save screenshot:{filename}')
         
-                cv2.imshow(window_name, panorama_bgr)
+                #cv2.imshow(window_name, panorama_bgr)
 
                 #print(f'{time.time() - start_time}')
 
