@@ -9,21 +9,13 @@ import shutil
 import CalibrationUtilities
 import WaveUtilities
 
-def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path):
+def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize):
     gray = cv2.cvtColor( image, cv2.COLOR_BGR2GRAY )
     ret, corners = cv2.findChessboardCorners(gray, patternSize, None)
     if not ret :
         print(f'Unable to find chessboard corners')
         return False, None
     
-    decorated_frame = cv2.drawChessboardCorners(image, patternSize, corners, ret)      
-    file_name = os.path.basename(image_path)              
-    filename_without_ext, ext = os.path.splitext(file_name)
-    file_name = f'{filename_without_ext}_decorated{ext}'
-    filepath = os.path.join(debug_path, file_name)
-    if not cv2.imwrite(filepath, decorated_frame) :
-        print(f'Unable to save frame to {filepath}')
-
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-5)
 
@@ -39,16 +31,8 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntr
 
     image_size = None
 
-    debug_paths = {}
-
     for i in range(0, len(imageFiles)) :
         image_path = imageFiles[i]
-
-        debug_path = os.path.join(os.path.dirname(image_path), 'debug')
-        if not debug_path in debug_paths :
-            shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
-            os.mkdir(debug_path)
-            debug_paths[debug_path] = None
 
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
@@ -61,7 +45,7 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntr
             image_size = image.shape[::-1]
 
         print(f'Processing image {i} {image_path}')
-        success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path)
+        success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize)
         if not success:
             continue
         imagePoints.append(corners_subPix)
@@ -367,8 +351,6 @@ def main():
 
         image_size = None
 
-        debug_paths = {}
-
         for k0 in range(numCameras) :
             c = pin_ids[k0]
             imagePoints[c] = []
@@ -389,13 +371,7 @@ def main():
                     # we store channels, width and height
                     image_size = image.shape[::-1]
 
-                debug_path = os.path.join(os.path.dirname(image_path), 'debug')
-                if not debug_path in debug_paths :
-                    shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
-                    os.mkdir(debug_path)
-                    debug_paths[debug_path] = None
-
-                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, debug_path)
+                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize)
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
@@ -487,8 +463,8 @@ def main():
             filename = os.path.join(intrinsic_paths, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
             intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
-            intrinsicMatrices.append(intrinsicMatrix)
-            distortions.append(distortion)
+            intrinsicMatrices[c] = intrinsicMatrix
+            distortions[c] = distortion
 
         imagePoints = []
 
@@ -509,7 +485,7 @@ def main():
                     print(f'Unable to load {image_path}')
                     continue
 
-                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize, args.debug_path)
+                success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize)
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
