@@ -13,7 +13,7 @@ def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZon
     gray = cv2.cvtColor( image, cv2.COLOR_BGR2GRAY )
     ret, corners = cv2.findChessboardCorners(gray, patternSize, None)
     if not ret :
-        print(f'Unable to find chessboard corners')
+        #print(f'Unable to find chessboard corners')
         return False, None
     
     # termination criteria
@@ -139,7 +139,7 @@ def StereoCalibration(objectPoints, imagePoints1, imagePoints2, IntrinsicMatrix1
     # F - Fundamental matrix.
     
     size = (imageSize[1], imageSize[2])
-    
+
     error, IntrinsicMatrix1, Distortion1, IntrinsicMatrix2, Distortion2, R, T, E, F = cv2.stereoCalibrate(objectPoints, imagePoints1, imagePoints2, IntrinsicMatrix1, Distortion1, IntrinsicMatrix2, Distortion2, size, flags, criteria)
 
     return error, R, T, E, F
@@ -326,6 +326,9 @@ def main():
         sideLength = args.pattern_side_length
     patternSideLength = np.array( [ sideLength ] )
 
+    if not os.path.exists(args.output_path) :
+        os.mkdir(args.output_path)
+
     if args.intrinsic: 
     
         startTime = time.time()
@@ -380,8 +383,8 @@ def main():
             intrinsicMatrix, distortion, reprojectionError, imageSize, fisheye = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             assert fisheye == args.fisheye
 
-            h,  w = imageSize
-            new_camera_matrix, roi, mapx, mapy = CalibrationUtilities.ComputeUndistortRectifyMap(args.fisheye, (w, h), (w, h), intrinsicMatrix, distortion, blaance=1.0, image_size2=None, image_size3=None)
+            _, w, h = imageSize
+            new_camera_matrix, roi, mapx, mapy = CalibrationUtilities.ComputeUndistortRectifyMap(args.fisheye, (w, h), (w, h), intrinsicMatrix, distortion, balance=1.0, image_size2=None, image_size3=None)
 
             intrinsicMatrices[c] = new_camera_matrix
             distortions[c] = distortion
@@ -416,16 +419,28 @@ def main():
                     # we store channels, width and height
                     image_size = image.shape[::-1]
 
+                filepath = os.path.join(args.output_path, f'debug_distorted_{i}.png')
+                if not cv2.imwrite(filepath, image) :
+                    print(f'Unable to save frame to {filepath}')
+
                 image = CalibrationUtilities.UndistortImage(image, mapxs[c], mapys[c])
 
                 #image = CalibrationUtilities.CropUndistortedImage(image, rois[c])
 
                 success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize)
+
+                decorated_frame = cv2.drawChessboardCorners(image, patternSize, corners_subPix, success)   
+
+                filepath = os.path.join(args.output_path, f'debug_undistorted{i}.png')
+                if not cv2.imwrite(filepath, decorated_frame) :
+                    print(f'Unable to save frame to {filepath}')
+
                 if success:
                     imagePoints[c].append(corners_subPix)
                 else:
                     print(f'No image points found on image {os.path.basename(image_path)}')
-                    sys.exit(1)
+                    imagePoints[c].append(None)
+                    #sys.exit(1)
 
         for c0, c1 in pairs :
             validImagesPerPair[(c0, c1)] = ([], [])
@@ -439,6 +454,10 @@ def main():
                 image_path0 = imageFilesPerCamera[c0][i0]
                 name0 = os.path.basename(image_path0)
                 points0 = imagePoints[c0][i0]
+
+                if points0 is None :
+                    continue
+
                 directory0 = os.path.dirname(image_path0)
 
                 captureIndex0 = CalibrationUtilities.GetCaptureIndex(name0)
@@ -447,6 +466,10 @@ def main():
                     image_path1 = imageFilesPerCamera[c1][i1]
                     name1 = os.path.basename(image_path1)
                     points1 = imagePoints[c1][i1]
+
+                    if points1 is None :
+                        continue
+
                     directory1 = os.path.dirname(image_path1)
 
                     captureIndex1 = CalibrationUtilities.GetCaptureIndex(name1)
@@ -489,7 +512,11 @@ def main():
             objectPointsArray *= patternSideLength
             
             print(f'Calibrating stereo pair {c0} {c1}')
-            
+
+            if objectPointsArray.size <= 0 :            
+                print(f'Cannot calibrate {c0} {1}')
+                continue
+
             error, R, T, E, F = StereoCalibration(objectPointsArray, validPointsPerPair[(c0, c1)][0], validPointsPerPair[(c0, c1)][1], intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], image_size) 
             
             jsonContent = CalibrationUtilities.StereoCalibrationToJson(intrinsicMatrices[c0], distortions[c0], intrinsicMatrices[c1], distortions[c1], R, T, E, F, patternSideLength)
