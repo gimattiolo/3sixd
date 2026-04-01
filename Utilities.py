@@ -153,6 +153,7 @@ def LoadCameraCalibration(path) :
     Distortion = None 
     ReprojectionError = None 
     ImageSize = None
+    fisheye = None
 
     print(f'Using calibration file {path}')
     ableToLoad = False
@@ -160,12 +161,12 @@ def LoadCameraCalibration(path) :
         fileObj = open(path, 'r')
         if not fileObj is None :
             jsonContent = fileObj.read()
-            IntrinsicMatrix, Distortion, ReprojectionError, ImageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
+            IntrinsicMatrix, Distortion, ReprojectionError, ImageSize, fisheye = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             ableToLoad = True
     if not ableToLoad :
         print(f'Unable to open calibration file {path}')
 
-    return ableToLoad, IntrinsicMatrix, Distortion, ReprojectionError, ImageSize 
+    return ableToLoad, IntrinsicMatrix, Distortion, ReprojectionError, ImageSize, fisheye
     
 def LoadStereoCalibration(path) :
     R = numpy.identity(3)

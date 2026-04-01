@@ -85,7 +85,7 @@ def ListToArray(vector, shape) :
     array.shape = shape
     return array
 
-def CameraCalibrationToJson(IntrinsicMatrix, Distortion, ReprojectionError, ImageSize) :
+def CameraCalibrationToJson(fisheye, IntrinsicMatrix, Distortion, ReprojectionError, ImageSize) :
     IntrinsicMatrixVector = ArrayToList(IntrinsicMatrix)
     DistortionVector = ArrayToList(Distortion)
     
@@ -96,6 +96,7 @@ def CameraCalibrationToJson(IntrinsicMatrix, Distortion, ReprojectionError, Imag
         'DistortionShape': Distortion.shape, 
         'ImageSize' : ImageSize,
         'ReprojectionError' : ReprojectionError,
+        'FishEye' : fisheye,
     }
     
     return json.dumps(obj, sort_keys = False, indent = 4)
@@ -107,8 +108,9 @@ def JsonToCameraCalibration(jsonContent) :
     Distortion = ListToArray(obj['Distortion'], obj['DistortionShape'])
     ImageSize = obj['ImageSize']
     ReprojectionError = obj['ReprojectionError']
+    FishEye = obj['FishEye']
     
-    return IntrinsicMatrix, Distortion, ReprojectionError, ImageSize
+    return IntrinsicMatrix, Distortion, ReprojectionError, ImageSize, FishEye
 
 # R - Rotation Matrix between first and second camera coordinate systems.
 # T - Translation vector between the coordinate systems of the cameras.
@@ -265,7 +267,7 @@ def make_gstreamer_pipeline(
     flip_method=0,
 ):
     return (
-        "nvarguscamerasrc sensor-id=%d ! "
+        "nvarguscamerasrc sensor-id=%d aelock=true ! "
         "video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, framerate=(fraction)%d/1 ! "
         "nvvidconv flip-method=%d ! "
         "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
@@ -383,7 +385,7 @@ class Focuser:
         print("write: {}".format(value))
 
 # image_size=(w,h)
-def ComputeUndistortRectifyMap(fisheye, image_size,  calibration_image_size, camera_matrix, distortion_coefficients, balance=1.0, image_size2=None, image_size3=None) :
+def ComputeUndistortRectifyMap(fisheye, image_size,  calibration_image_size, camera_matrix, distortion, balance=1.0, image_size2=None, image_size3=None) :
     R = None
     #m1type Type of the first output map, e.g., cv2.CV_16SC2 or cv2.CV_32F    
     ml_type=cv2.CV_16SC2
@@ -396,14 +398,14 @@ def ComputeUndistortRectifyMap(fisheye, image_size,  calibration_image_size, cam
             image_size3 = image_size    
         scaled_camera_matrix = camera_matrix * image_size[0] / calibration_image_size[0]  # The values of Kcamera_matrix is to scale with image dimension.
         scaled_camera_matrix[2][2] = 1.0  # Except that camera_matrix[2][2] is always 1.0    # This is how scaled_camera_matrix, dim2 and balance are used to determine the final camera_matrix used to un-distort image. OpenCV document failed to make this clear!
-        new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(scaled_camera_matrix, distortion_coefficients, image_size2, R, balance)
-        mapx, mapy = cv2.fisheye.initUndistortRectifyMap(scaled_camera_matrix, distortion_coefficients, R, new_camera_matrix, image_size3, cv2.CV_16SC2)
+        new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(scaled_camera_matrix, distortion, image_size2, R, balance)
+        mapx, mapy = cv2.fisheye.initUndistortRectifyMap(scaled_camera_matrix, distortion, R, new_camera_matrix, image_size3, cv2.CV_16SC2)
         roi = (0, 0, image_size[0], image_size[1])
     else :
         # Refine the camera matrix (optional, as above)
-        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, distortion_coefficients, imageSize=image_size, alpha=balance, newImageSize=image_size, centerPrincipalPoint=False)
+        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, distortion, imageSize=image_size, alpha=balance, newImageSize=image_size, centerPrincipalPoint=False)
         # Compute the undistortion and rectification transformation maps once
-        mapx, mapy = cv2.initUndistortRectifyMap(camera_matrix, distortion_coefficients, R, new_camera_matrix, image_size, m1type=ml_type)
+        mapx, mapy = cv2.initUndistortRectifyMap(camera_matrix, distortion, R, new_camera_matrix, image_size, m1type=ml_type)
     return new_camera_matrix, roi, mapx, mapy
 
 def UndistortImage(img, mapx, mapy) :

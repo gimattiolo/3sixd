@@ -11,7 +11,7 @@ import CalibrationUtilities
 def main():
     parser = argparse.ArgumentParser('Verify calibration images')
     parser.add_argument('--pattern_size', type=int, nargs=2, help='2D size of checkerboard pattern to detect')
-    parser.add_argument('--input_path', type=str, help='input folder for calibration files')
+    parser.add_argument('--input_paths', type=str, nargs='+', help='input folder for calibration files')
     parser.add_argument('--output_path', type=str, help='output folder for calibration files')
 
     args = parser.parse_args()
@@ -23,8 +23,15 @@ def main():
     
     startTime = time.time()
 
-    for path in args.input_path :
+    for path in args.input_paths :
+
+        debug_path = os.path.join(path, 'debug')
+        shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
+
         fileList = os.listdir(path)
+
+        os.mkdir(debug_path)
+
         for i in range(0, len(fileList)):
             filename = fileList[i]
         
@@ -34,10 +41,6 @@ def main():
                 continue
             
             image_path = os.path.join(path, filename) 
-
-            debug_path = os.path.join(os.path.dirname(image_path), 'debug')
-            shutil.rmtree(debug_path, ignore_errors=True, onerror=None)
-            os.mkdir(debug_path)
 
             image = cv2.imread(image_path, cv2.IMREAD_COLOR)
 

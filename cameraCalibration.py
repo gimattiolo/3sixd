@@ -7,7 +7,7 @@ import time
 import shutil
 
 import CalibrationUtilities
-import WaveUtilities
+import Utilities
 
 def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize):
     gray = cv2.cvtColor( image, cv2.COLOR_BGR2GRAY )
@@ -25,7 +25,7 @@ def ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZon
 # see https://docs.opencv.org/4.x/da/d0d/tutorial_camera_calibration_pattern.html
 # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_calib3d/py_calibration/py_calibration.html
 # see https://docs.opencv.org/master/dc/dbb/tutorial_py_calibration.html
-def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntrinsicsGuess, intrinsicMatrix, distortion) :
+def CameraCalibration(fisheye, patternSize, searchSize, zeroZoneSize, imageFiles, useIntrinsicsGuess, intrinsicMatrix, distortion) :
     # Array to store image points from all the images.
     imagePoints = [] # 2d points in image plane.
 
@@ -62,7 +62,8 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntr
     for i in range(0, len(imagePoints)) :
         imageObjectPoints.append(objp)
 
-    objectPoints = np.array(imageObjectPoints)
+    objectPoints = np.array(imageObjectPoints, dtype=np.float32)
+    objectPoints = [np.expand_dims(points, -2) for points in objectPoints]
 
     if len(imagePoints) <= 0 :
         print(f'No image points found')
@@ -70,18 +71,50 @@ def CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFiles, useIntr
 
     numImages = max(1, len(imagePoints))
        
+    #W, H
     size = (image_size[1], image_size[2])
 
     print(f'Guess flag enabled : {useIntrinsicsGuess}')
        
     print(f'Running calibration routine. This might take a while and be unresponsive, depending on the number of input images : {numImages}')
+    
     flags = 0
-    
+
     if useIntrinsicsGuess :   
-        flags = cv2.CALIB_USE_INTRINSIC_GUESS 
+        flags += cv2.CALIB_USE_INTRINSIC_GUESS 
     
-    error, intrinsicMatrix, distortion, rvecs, tvecs = cv2.calibrateCamera(objectPoints, imagePoints, size, intrinsicMatrix, distortion, None, None, flags, criteria)
-    
+    if fisheye :
+
+        # some default values that seem to work
+        fx = fy = 0.5 * size[1]
+        cx = 0.5 * size[0]
+        cy = 0.5 * size[1]
+        #intrinsicMatrix = np.eye(3)
+        intrinsicMatrix = np.array(
+            [
+                [fx, 0.0, cx], 
+                [0.0, fy, cy], 
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        distortion = np.zeros((4, 1))
+
+
+        flags += cv2.CALIB_USE_INTRINSIC_GUESS 
+        #flags += cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC #seem to cause larger erros
+        flags += cv2.fisheye.CALIB_CHECK_COND
+        flags += cv2.fisheye.CALIB_FIX_SKEW
+
+        N_OK = len(objectPoints)
+        rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+        tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+
+        error, intrinsicMatrix, distortion, rvecs, tvecs = cv2.fisheye.calibrate(objectPoints, imagePoints, size, intrinsicMatrix, distortion, rvecs, tvecs, flags, criteria)
+
+    else :
+
+        error, intrinsicMatrix, distortion, rvecs, tvecs = cv2.calibrateCamera(objectPoints, imagePoints, size, intrinsicMatrix, distortion, None, None, flags, criteria)
+
     mean_error = 0.0
     for i in range(len(imagePoints)):
         imagePoints2, _ = cv2.projectPoints(objectPoints[i], rvecs[i], tvecs[i], intrinsicMatrix, distortion)
@@ -211,6 +244,7 @@ def main():
     parser.add_argument('--pairs', type=int, nargs='+', help='pairs of cameras for stereo calibration')
     parser.add_argument('--use_intrinsics_guess', action="store_true", help='use guess for intrinsics')
     parser.add_argument('--output_path', type=str, help='output folder for calibration files')
+    parser.add_argument('--fisheye', action="store_true", help='true if using fish eye lenses)')
 
     args = parser.parse_args()
 
@@ -278,7 +312,7 @@ def main():
                 sys.exit(1)
 
     if args.extrinsic and extrinsic_paths :
-        for path in intrinsic_paths :
+        for path in extrinsic_paths :
             if not os.path.exists(path) :
                 print(f'Invalid extrinsic path {path}')
                 sys.exit(1)
@@ -311,12 +345,12 @@ def main():
             
             cameraFilename = os.path.join(args.output_path, f'calibration{pin_id}.json')
 
-            camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, _ = WaveUtilities.LoadCameraCalibration(cameraFilename)
+            camaraCalibrationLoaded, intrinsicMatrices[pin_id], distortions[pin_id], e, image_size, fisheye = Utilities.LoadCameraCalibration(cameraFilename)
 
             useIntrinsicsGuess = args.use_intrinsics_guess and camaraCalibrationLoaded
 
-            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id], image_size = CameraCalibration(patternSize, searchSize, zeroZoneSize, imageFilesPerCamera[pin_id], useIntrinsicsGuess, intrinsicMatrices[pin_id], distortions[pin_id])
-            jsonContent = CalibrationUtilities.CameraCalibrationToJson(intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], image_size) 
+            error, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], imagePoints[pin_id], image_size = CameraCalibration(args.fisheye, patternSize, searchSize, zeroZoneSize, imageFilesPerCamera[pin_id], useIntrinsicsGuess, intrinsicMatrices[pin_id], distortions[pin_id])
+            jsonContent = CalibrationUtilities.CameraCalibrationToJson(args.fisheye, intrinsicMatrices[pin_id], distortions[pin_id], mean_errors[pin_id], image_size) 
 
             filename = os.path.join(args.output_path, f'calibration{pin_id}.json')
             SaveJsonContent(jsonContent, filename)
@@ -336,13 +370,24 @@ def main():
         # load intrinsic data from disk for each camera
         intrinsicMatrices = {}
         distortions = {}
+        rois = {}
+        mapxs = {}
+        mapys = {}
         for k0 in range(numCameras) :
             c = pin_ids[k0]
             filename = os.path.join(args.output_path, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
-            intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
-            intrinsicMatrices[c] = intrinsicMatrix
+            intrinsicMatrix, distortion, reprojectionError, imageSize, fisheye = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
+            assert fisheye == args.fisheye
+
+            h,  w = imageSize
+            new_camera_matrix, roi, mapx, mapy = CalibrationUtilities.ComputeUndistortRectifyMap(args.fisheye, (w, h), (w, h), intrinsicMatrix, distortion, blaance=1.0, image_size2=None, image_size3=None)
+
+            intrinsicMatrices[c] = new_camera_matrix
             distortions[c] = distortion
+            rois[c] = roi
+            mapxs[c] = mapx
+            mapys[c] = mapy
 
         imagePoints = {}
 
@@ -370,6 +415,10 @@ def main():
                 if image_size is None :
                     # we store channels, width and height
                     image_size = image.shape[::-1]
+
+                image = CalibrationUtilities.UndistortImage(image, mapxs[c], mapys[c])
+
+                #image = CalibrationUtilities.CropUndistortedImage(image, rois[c])
 
                 success, corners_subPix = ComputeImagePointCorners(image, image_path, patternSize, searchSize, zeroZoneSize)
                 if success:
@@ -462,7 +511,7 @@ def main():
             c = pin_ids[k0]
             filename = os.path.join(intrinsic_paths, f'calibration{c}.json')
             jsonContent = LoadJsonContent(filename)
-            intrinsicMatrix, distortion, reprojectionError, imageSize = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
+            intrinsicMatrix, distortion, reprojectionError, imageSize, fisheye = CalibrationUtilities.JsonToCameraCalibration(jsonContent)
             intrinsicMatrices[c] = intrinsicMatrix
             distortions[c] = distortion
 
