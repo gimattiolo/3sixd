@@ -382,20 +382,28 @@ class Focuser:
         self.write(self.CHIP_I2C_ADDR, value)
         print("write: {}".format(value))
 
-def ComputeUndistortRectifyMap(fisheye, h, w, camera_matrix, distortion_coefficients) :
+# image_size=(w,h)
+def ComputeUndistortRectifyMap(fisheye, image_size,  calibration_image_size, camera_matrix, distortion_coefficients, balance=1.0, image_size2=None, image_size3=None) :
     R = None
-    undistorted_image_size = (w,h)
     #m1type Type of the first output map, e.g., cv2.CV_16SC2 or cv2.CV_32F    
     ml_type=cv2.CV_16SC2
     if fisheye :
-        new_camera_matrix = camera_matrix.copy()
-        mapx, mapy = cv2.fisheye.initUndistortRectifyMap(camera_matrix, distortion_coefficients, R, new_camera_matrix, undistorted_image_size, m1type=ml_type)
-        roi = (0, 0, w, h)
+        #image_size is the dimension of input image to un-distort    
+        assert image_size[0]/image_size[1] == calibration_image_size[0]/calibration_image_size[1], "Image to undistort needs to have same aspect ratio as the ones used in calibration"    
+        if not image_size2:
+            image_size2 = image_size    
+        if not image_size3:
+            image_size3 = image_size    
+        scaled_camera_matrix = camera_matrix * image_size[0] / calibration_image_size[0]  # The values of Kcamera_matrix is to scale with image dimension.
+        scaled_camera_matrix[2][2] = 1.0  # Except that camera_matrix[2][2] is always 1.0    # This is how scaled_camera_matrix, dim2 and balance are used to determine the final camera_matrix used to un-distort image. OpenCV document failed to make this clear!
+        new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(scaled_camera_matrix, distortion_coefficients, image_size2, R, balance)
+        mapx, mapy = cv2.fisheye.initUndistortRectifyMap(scaled_camera_matrix, distortion_coefficients, R, new_camera_matrix, image_size3, cv2.CV_16SC2)
+        roi = (0, 0, image_size[0], image_size[1])
     else :
         # Refine the camera matrix (optional, as above)
-        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, distortion_coefficients, imageSize=undistorted_image_size, alpha=1, newImageSize=undistorted_image_size, centerPrincipalPoint=False)
+        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, distortion_coefficients, imageSize=image_size, alpha=balance, newImageSize=image_size, centerPrincipalPoint=False)
         # Compute the undistortion and rectification transformation maps once
-        mapx, mapy = cv2.initUndistortRectifyMap(camera_matrix, distortion_coefficients, R, new_camera_matrix, undistorted_image_size, m1type=ml_type)
+        mapx, mapy = cv2.initUndistortRectifyMap(camera_matrix, distortion_coefficients, R, new_camera_matrix, image_size, m1type=ml_type)
     return new_camera_matrix, roi, mapx, mapy
 
 def UndistortImage(img, mapx, mapy) :
