@@ -101,6 +101,8 @@ def main():
     parser.add_argument('--extrinsics_captures', type=int, nargs='+', help='capture sequence for extrinsics')
     parser.add_argument('--allowed_pins', type=int, nargs='+', help='allowed pins')
     parser.add_argument('--flip_methods', type=int, nargs='+', help='flip methods')
+    #parser.add_argument('--focus_value', type=int, default=0, help='focus value')
+    #parser.add_argument('--focus_bus', type=int, default=9, help='Set i2c bus, for A02 is 6, for B01 is 7 or 8, for Jetson Xavier NX it is 9 and 10.')
     args = parser.parse_args()
 
     # if args.allowed
@@ -147,7 +149,6 @@ def main():
     assert(len(args.flip_methods) == num_cameras)
 
     pin_ids = list(cameraData.keys())
-
 
     #file_indices = []
     # if args.file_indices:
@@ -339,6 +340,10 @@ def main():
 
     window_visible = True
 
+    #focuser = CalibrationUtilities.Focuser(bus=args.focus_bus)
+
+    #focuser.set(CalibrationUtilities.Focuser.OPT_FOCUS, value=args.focus_value)
+
     captureCompleted = False
     while running :
         now = time.time()
@@ -482,7 +487,9 @@ def main():
         windowFrame = cv2.hconcat(concatFrames)
         
         if not captureCompleted :
-            text_info = f'{args.capture_delta_time_sec - deltaTime:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_shots_per_capture}|{current_capture_id}/{len(captureData)}'
+
+            diff = args.capture_delta_time_sec - deltaTime
+            text_info = f'{diff:,.3f}/{args.capture_delta_time_sec}|{captureData[current_capture_id].counter}/{args.num_shots_per_capture}|{current_capture_id}/{len(captureData)}'
 
         cv2.putText(windowFrame, 
             text_info, 
