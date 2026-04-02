@@ -41,6 +41,9 @@ class CameraDatum :
         self.f_pixels = 0
         self.h_pixels = 0
         self.ar = 0.0
+        self.mapx = None
+        self.mapy = None
+        self.roi = None
 
     def __init__(self) :
         self.reset()
@@ -673,6 +676,10 @@ def camera_main(daemon, process_args):
                 if cameraDatum.capture.isOpened() :
                     # Capture frame-by-frame
                     ret, local_frames_bgr[pin_id, :, :, :] = cameraDatum.capture.read()
+
+                    #local_frames_bgr[pin_id, :, :, :] = CalibrationUtilities.UndistortImage(local_frames_bgr[pin_id, :, :, :], cameraDatum.mapx, cameraDatum.mapy)
+                    #local_frames_bgr[pin_id, :, :, :] = CalibrationUtilities.CropUndistortedImage(local_frames_bgr[pin_id, :, :, :], cameraDatum.roi)
+
                     local_frames_bgr[pin_id, :, :, :] /= 255.0
                     if not ret :
                         print(f'{pin_id} not reading frames')
@@ -904,6 +911,9 @@ class Script :
 
             cameraCalibrationOK = True
 
+
+            h,  w = imageSize
+
             for k0 in range(0, num_cameras) :
                 c0 = pin_ids[k0]
 
@@ -911,7 +921,9 @@ class Script :
 
                 cameraFilename = os.path.join(Script.args.intrinsic_path, f'calibration{c0}.json')
                 
-                camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize = Utilities.LoadCameraCalibration(cameraFilename)
+                camaraCalibrationLoaded, cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, cameraDatum.ReprojectionError, cameraDatum.ImageSize, cameraDatum.fisheye = Utilities.LoadCameraCalibration(cameraFilename)
+
+                #cameraDatum.IntrinsicMatrix, cameraDatum.roi, cameraDatum.mapx, cameraDatum.mapy = CalibrationUtilities.ComputeUndistortRectifyMap(cameraDatum.fisheye, (w, h), (w, h), cameraDatum.IntrinsicMatrix, cameraDatum.Distortion, blaance=1.0, image_size2=None, image_size3=None)
 
                 cameraCalibrationOK = cameraCalibrationOK and camaraCalibrationLoaded
 
@@ -1104,6 +1116,7 @@ class Script :
                 # right handed
                 ps = np.dot(ProjectionMatrices[pin_id][:, 0:3], ray_inW)
                 ps[0:2, :] /= np.maximum(0.001, ps[2, :]) 
+
                 ps = np.reshape(ps[0:2, :], (2, Script.args.H, Script.args.W))
                 #2,H,W -> H,W,2
                 ps = np.transpose(ps, (1, 2, 0)).astype(np.int32)

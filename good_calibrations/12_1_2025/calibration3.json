@@ -30,5 +30,6 @@
         1920,
         1080
     ],
-    "ReprojectionError": 0.059640511650475535
+    "ReprojectionError": 0.059640511650475535,
+    "FishEye": false
 }
