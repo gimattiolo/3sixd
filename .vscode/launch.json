@@ -8,7 +8,7 @@
             "program": "~/gits/3sixd/cameraCalibrationCapture.py",
             "console": "integratedTerminal",
             "args": [
-                "--path", "~/gits/3sixd/calibration_data3",
+                "--path", "~/gits/3sixd/calibration_data_prototype",
                 "--auto", "1",
                 "--save_mode", "0",
                 "--num_shots_per_capture", "20",
@@ -48,14 +48,27 @@
                 "--file_indices", "0", "1", "2", "3", "4", "5",
                 // to make the pairs cyclical explicitely re-add first camera pin
                 "--pairs", "0", "2", "4", "1", "3", "5", "0",
-                "--intrinsic_path", "~/gits/3sixd/calibration_data3",
-                "--extrinsic_path", "~/gits/3sixd/calibration_data3",
-                "--output_path", "~/gits/3sixd/calibration_data_test",
+                "--intrinsic_path", "~/gits/3sixd/calibration_data_prototype",
+                "--extrinsic_path", "~/gits/3sixd/calibration_data_prototype",
+                "--output_path", "~/gits/3sixd/calibration_prototype",
                 //"--use_intrinsics_guess",
                 "--pattern_size", "9", "6",        
                 "--pattern_side_length", "1",        
                 "--intrinsic",
-                //"--extrinsic",
+                "--extrinsic",
+                //"--fisheye",
+            ]
+        },
+        {
+            "name": "calibration verification",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/gits/3sixd/cameraCalibrationVerify.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--input_paths", "~/gits/3sixd/calibration_data_prototype",
+                "--output_path", "~/gits/3sixd/calibration_data_prototype",
+                "--pattern_size", "9", "6",        
             ]
         },
         {

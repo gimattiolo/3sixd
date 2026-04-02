@@ -912,7 +912,7 @@ class Script :
             cameraCalibrationOK = True
 
 
-            h,  w = imageSize
+            #h,  w = imageSize
 
             for k0 in range(0, num_cameras) :
                 c0 = pin_ids[k0]
