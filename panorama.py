@@ -772,7 +772,7 @@ class Script :
         parser.add_argument('--width', dest='W', type=int, default=1920, help='width of the output image')
         parser.add_argument('--multiprocessing_start', type=str, default='spawn', help='multiprocessing start method')
         parser.add_argument('--enable_validation', action='store_true', help='Enable validation layers')
-        parser.add_argument('--compute_mode', type=int, default=0, help='0:cpu,1:cuda,2:vulkan')
+        parser.add_argument('--compute_mode', type=int, default=1, help='0:cpu,1:cuda,2:vulkan')
 
         Script.args = parser.parse_args()
 

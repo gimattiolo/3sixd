@@ -91,6 +91,8 @@
                 // "--pairs", "5", "0",
                   "--flip_methods", "2", "0", "2", "2", "2", "2", "2",
                 //"--flip_methods", "2", "2", "2",
+                //"--benchmark",
+                //"--compute_mode", "1" //cuda
             ]
         },
         {
