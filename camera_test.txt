@@ -1,0 +1,52 @@
+#!/bin/bash
+
+ls /dev/video* -lh
+v4l2-ctl --list-formats -d 0 # 0 is video0
+
+
+SENSOR_ID=3
+
+
+FRAMERATE=30
+width=3840
+height=2160
+
+#for SENSOR_ID in {1..5}
+#do
+
+#aeregion="0 0 256 256 1" aelock=true 
+gst-launch-1.0 nvarguscamerasrc sensor-id=$SENSOR_ID aelock=true ! "video/x-raw(memory:NVMM),width=$width,height=$height,framerate=$FRAMERATE/1" ! nvvidconv ! nvegltransform ! nveglglessink -e
+	
+#done
+
+# flip rotate the frame
+#gst-launch-1.0 nvarguscamerasrc sensor-id=$SENSOR_ID ! "video/x-raw(memory:NVMM), width=$width, height=$height, framerate=$FRAMERATE/1" ! nvvidconv flip-method=0 ! nvegltransform ! nveglglessink -e
+
+
+#gst-launch-1.0 nvarguscamerasrc sensor-id=$SENSOR_ID ! "video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1" ! nvvidconv flip-method=0 ! nvegltransform ! nveglglessink -e
+
+
+#gst-launch-1.0 nvarguscamerasrc sensor-id=$SENSOR_ID ! "video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1" ! nvvidconv flip-method=0 ! nvegltransform ! appsink drop=1
+#gst-launch-1.0 v4l2src device=/dev/video2 ! "video/x-raw,width=1920,height=1080" ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1
+   
+   
+   
+#gst-launch-1.0 nvarguscamerasrc sensor-id=$SENSOR_ID ! "video/x-raw(memory:NVMM), width=(int)1280, height=(int)720, framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! nvegltransform ! nveglglessink -e
+   
+   
+#gst-launch-1.0 nvarguscamerasrc sensor-id=2 ! "video/x-raw(memory:NVMM),width=(int)1280,height=(int)720,framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! "video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx" ! videoconvert ! "video/x-raw,format=(string)BGR" ! queue ! appsink
+
+   
+#gst-launch-1.0 nvarguscamerasrc sensor-id=2 ! "video/x-raw(memory:NVMM),width=(int)1280,height=(int)720,framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! "video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx" ! videoconvert ! "video/x-raw,format=(string)BGR" ! queue ! appsink
+
+#gst-launch-1.0 nvarguscamerasrc sensor-id=2 ! "video/x-raw(memory:NVMM),width=(int)1280,height=(int)720,framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! "video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx" ! videoconvert ! "video/x-raw,format=(string)BGR" ! queue ! appsink
+
+#works
+#gst-launch-1.0 nvarguscamerasrc sensor-id=2 ! "video/x-raw(memory:NVMM),width=(int)1280,height=(int)720,framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! "video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx" ! videoconvert ! "video/x-raw,format=(string)BGR" ! queue ! appsink
+
+#gst-launch-1.0 nvarguscamerasrc sensor-id=2 ! "video/x-raw(memory:NVMM),width=(int)1280,height=(int)720,framerate=(fraction)30/1" ! nvvidconv flip-method=0 ! appsink
+
+
+#gst-launch-1.0 nvarguscamerasrc sensor-id=5 ! 'video/x-raw(memory:NVMM), width=(int)1920, height=(int)1080, format=(string)NV12, framerate=(fraction)30/1' ! nvvidconv flip-method=2 ! 'video/x-raw, format=(string)BGRx' ! videoconvert ! 'video/x-raw, format=(string)BGR' ! appsink
+
+
