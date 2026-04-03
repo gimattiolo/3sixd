@@ -31,7 +31,8 @@ The main scripts of this repo are cameraCalibrationCapture.py, cameraCalibration
 
 * cameraCalibrationCapture.py
 
-Use this script to capture a collection of pictures showing a calibration checkerboard like this one https://github.com/opencv/opencv/blob/4.x/doc/pattern.png.
+Use this script to capture a collection of pictures showing a calibration checkerboard like this one https://github.com/opencv/opencv/blob/4.x/doc/pattern.png. 
+We downloaded this image and dispalyed on a tablet. Another option is print it on a rigid non reflective surface.
 There are few arguments that can be passed to the script. --path defines where the images will be saved on disk. 
 The auto flag automatically captures images at interval when detecting the patterns, the pattern_size, representing the number of rows and columns on the checkerboard used for calibration and allowed pins which allows the script to go through all the cameras and pairs of cameras based on the sequence.
 
